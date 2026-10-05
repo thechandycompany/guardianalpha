@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Closed alpha: keep it out of search engines. -->
+  <meta name="robots" content="noindex, nofollow">
+  <title>virtpet · leaderboard (closed alpha)</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%226%22 fill=%22%23c77dff%22/%3E%3C/svg%3E">
+  <style>
+    :root {
+      --bg: #1a1a1a; --card: #111; --line: #333; --text: #e0e0e0; --muted: #999; --accent: #c77dff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Courier New', monospace; background: var(--bg); color: var(--text);
+      margin: 0; padding: 16px; text-align: center;
+    }
+    h1 { color: var(--accent); margin: 8px 0 2px; }
+    .sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+    .map-wrap {
+      max-width: 900px; margin: 0 auto; border: 2px solid var(--accent); border-radius: 12px;
+      overflow: hidden; background: #0d1018;
+    }
+    svg { display: block; width: 100%; height: auto; }
+    .node-dot { cursor: pointer; }
+    .node-dot:hover circle.ring { stroke-width: 3; }
+    .legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; margin: 12px auto; max-width: 900px; font-size: 13px; }
+    .legend span { white-space: nowrap; }
+    .sw { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; max-width: 980px; margin: 16px auto; }
+    .card { background: var(--card); border: 2px solid var(--line); border-radius: 10px; padding: 14px 16px; text-align: left; }
+    .card.flash { border-color: var(--accent); }
+    .card h2 { font-size: 17px; margin: 0 0 10px; color: #7db4ff; }
+    .label { font-size: 12px; color: var(--muted); margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 1px; }
+    .champ { font-size: 16px; }
+    .tag { display: inline-block; font-size: 11px; color: #ccc; border: 1px solid #444; border-radius: 10px; padding: 1px 8px; margin: 3px 3px 0 0; }
+    .bar { position: relative; background: #333; border: 1px solid #555; border-radius: 4px; height: 16px; overflow: hidden; }
+    .bar div { height: 100%; background: #e04b4b; }
+    .bar span { position: absolute; right: 6px; top: 0; line-height: 16px; font-size: 11px; color: #fff; text-shadow: 0 0 2px #000; }
+    ol { margin: 4px 0 0; padding-left: 22px; font-size: 14px; }
+    ol li { margin: 2px 0; }
+    ol li .dmg { float: right; color: var(--muted); }
+    .empty { color: #777; font-size: 14px; }
+    .foot { color: #777; font-size: 12px; max-width: 640px; margin: 24px auto 8px; line-height: 1.5; }
+    .err { color: #e04b4b; }
+  </style>
+</head>
+<body>
+  <h1>virtpet</h1>
+  <div class="sub">Node leaderboards · closed alpha · <span id="updated">loading…</span></div>
+
+  <div class="map-wrap"><svg id="map" viewBox="0 0 1000 600" aria-label="map of nodes"></svg></div>
+  <div class="legend" id="legend"></div>
+  <div class="grid" id="nodes"></div>
+
+  <div class="foot">
+    The map is made up: a node's spot on it has nothing to do with where it really is.
+    Pets show here only by their generated names (like "Brave Defender #4821"). Nothing anyone
+    types, no pictures, no locations, no accounts, and no cookies or tracking on this page.
+    Boards update when nodes report in.
+  </div>
+
+  <script>
+    // Public, read-only: the publishable key can only read visible boards (RLS).
+    const SUPABASE_URL = 'https://fkeiqvlwujxjlxaducge.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_JBw_SlIMnqg6k96ZsdqabQ_n50CMqfZ';
+
+    // Faction colors (virtpet/node_protocol.h order; TODO.md). Unaligned = gray.
+    const FACTION_COLORS = {
+      'Signal Keepers': '#38d6e8', 'Ember Legion': '#e0443e', 'Gatekeepers': '#9b5de5',
+      'Wayfinders': '#4caf50', 'Trackers': '#e8b931', 'Dreamwardens': '#3a4fb8', 'Circuit Kin': '#f08a24',
+    };
+    const NO_FACTION = '#777';
+    const color = f => FACTION_COLORS[f] || NO_FACTION;
+
+    const el = (tag, cls, text) => {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    };
+    const svgEl = (tag, attrs) => {
+      const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+      for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+      return e;
+    };
+    const fmt = n => Number(n).toLocaleString();
+
+    // A made-up landscape: fixed blobs from a seeded random, so it never changes between visits.
+    function drawLand(svg) {
+      let seed = 7;
+      const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      svg.append(svgEl('rect', { width: 1000, height: 600, fill: '#0d1018' }));
+      for (let i = 0; i < 14; i++) {
+        svg.append(svgEl('ellipse', {
+          cx: 60 + rnd() * 880, cy: 50 + rnd() * 500, rx: 60 + rnd() * 150, ry: 40 + rnd() * 100,
+          fill: i % 3 ? '#16231b' : '#1b1f2e', opacity: 0.9,
+        }));
+      }
+      for (let i = 0; i < 40; i++) {
+        svg.append(svgEl('circle', { cx: rnd() * 1000, cy: rnd() * 600, r: 1 + rnd() * 1.5, fill: '#2b3348' }));
+      }
+    }
+
+    function nodeCard(n) {
+      const card = el('div', 'card');
+      card.id = 'node-' + n.node_id;
+      card.append(el('h2', null, n.name));
+
+      card.append(el('div', 'label', '⚔ Champion'));
+      if (n.champion) {
+        const c = n.champion;
+        const d = el('div', 'champ', c.name);
+        card.append(d);
+        const tags = el('div');
+        const f = el('span', 'tag', c.faction || 'no faction');
+        f.style.borderColor = color(c.faction);
+        tags.append(f, el('span', 'tag', c.class), el('span', 'tag', 'Lv. ' + c.level));
+        card.append(tags);
+      } else {
+        card.append(el('div', 'empty', 'No champion yet'));
+      }
+
+      const b = n.boss || {};
+      card.append(el('div', 'label', '👹 ' + (b.name || 'Boss') + ' · Lv. ' + (b.level || 1)));
+      const bar = el('div', 'bar');
+      const fill = el('div');
+      fill.style.width = (b.maxHp ? Math.round(100 * b.hp / b.maxHp) : 0) + '%';
+      bar.append(fill, el('span', null, fmt(b.hp || 0) + ' / ' + fmt(b.maxHp || 0)));
+      card.append(bar);
+
+      card.append(el('div', 'label', 'Top damage'));
+      if (n.top5 && n.top5.length) {
+        const ol = el('ol');
+        for (const r of n.top5) {
+          const li = el('li', null, r.name + ' ');
+          li.style.color = r.faction ? color(r.faction) : '';
+          li.append(el('span', 'dmg', fmt(r.damage)));
+          ol.append(li);
+        }
+        card.append(ol);
+      } else {
+        card.append(el('div', 'empty', 'No hits yet'));
+      }
+
+      card.append(el('div', 'label', '🔍 Rarest find'));
+      card.append(n.rarest ? el('div', null, n.rarest.item + ' — ' + n.rarest.by)
+                           : el('div', 'empty', 'Nothing found yet'));
+      return card;
+    }
+
+    function render(rows) {
+      const svg = document.getElementById('map');
+      svg.replaceChildren();
+      drawLand(svg);
+      const held = {};
+      for (const n of rows) {
+        const f = n.champion ? (n.champion.faction || '') : null;
+        if (f !== null) held[f] = (held[f] || 0) + 1;
+        const x = 40 + n.map_x * 920, y = 40 + n.map_y * 520;
+        const g = svgEl('g', { class: 'node-dot' });
+        g.append(svgEl('circle', { class: 'ring', cx: x, cy: y, r: 14, fill: 'none', stroke: f === null ? '#555' : color(f), 'stroke-width': 2 }));
+        g.append(svgEl('circle', { cx: x, cy: y, r: 7, fill: f === null ? '#333' : color(f) }));
+        const label = svgEl('text', { x, y: y + 30, 'text-anchor': 'middle', fill: '#bbb', 'font-size': 14, 'font-family': 'Courier New, monospace' });
+        label.textContent = n.name;
+        g.append(label);
+        g.addEventListener('click', () => {
+          const card = document.getElementById('node-' + n.node_id);
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          card.classList.add('flash');
+          setTimeout(() => card.classList.remove('flash'), 1500);
+        });
+        svg.append(g);
+      }
+
+      const legend = document.getElementById('legend');
+      legend.replaceChildren(...Object.keys(FACTION_COLORS).map(f => {
+        const s = el('span');
+        const sw = el('i', 'sw');
+        sw.style.background = FACTION_COLORS[f];
+        s.append(sw, document.createTextNode(f + (held[f] ? ' · ' + held[f] : '')));
+        return s;
+      }));
+
+      const grid = document.getElementById('nodes');
+      grid.replaceChildren(...rows.map(nodeCard));
+      if (!rows.length) grid.append(el('div', 'empty', 'No nodes online yet.'));
+    }
+
+    async function load() {
+      const upd = document.getElementById('updated');
+      try {
+        const res = await fetch(SUPABASE_URL + '/rest/v1/node_state?select=node_id,name,map_x,map_y,champion,boss,top5,rarest,updated_day&order=name',
+                                { headers: { apikey: SUPABASE_KEY }, cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const rows = await res.json();
+        render(rows);
+        upd.textContent = rows.length + ' node' + (rows.length === 1 ? '' : 's') + ' · updated ' + new Date().toLocaleTimeString();
+        upd.className = '';
+      } catch (err) {
+        upd.textContent = "couldn't load the boards (" + err.message + ')';
+        upd.className = 'err';
+      }
+    }
+
+    load();
+    setInterval(load, 60 * 1000);
+  </script>
+</body>
+</html>
