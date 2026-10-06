@@ -150,19 +150,85 @@
       return card;
     }
 
+    // ---- Territory zones ----
+    // Each node claims the land closer to it than to any other node (a Voronoi
+    // cell), out to ZONE_RADIUS, so a lone node holds a patch rather than the
+    // whole map. The zone takes the color of the champion's faction.
+    const MAP_W = 1000, MAP_H = 600, ZONE_RADIUS = 170;
+    const nodeXY = n => [40 + n.map_x * 920, 40 + n.map_y * 520];
+
+    // Keeps the part of convex polygon `poly` where nx*x + ny*y <= c.
+    function clip(poly, nx, ny, c) {
+      const out = [];
+      for (let i = 0; i < poly.length; i++) {
+        const p = poly[i], q = poly[(i + 1) % poly.length];
+        const dp = nx * p[0] + ny * p[1] - c, dq = nx * q[0] + ny * q[1] - c;
+        if (dp <= 0) out.push(p);
+        if ((dp < 0) !== (dq < 0) && dp !== dq) {
+          const t = dp / (dp - dq);
+          out.push([p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])]);
+        }
+      }
+      return out;
+    }
+
+    function zonePolygon(i, pts) {
+      const [x, y] = pts[i];
+      let poly = [];
+      for (let k = 0; k < 40; k++) {
+        const a = (k / 40) * 2 * Math.PI;
+        poly.push([x + ZONE_RADIUS * Math.cos(a), y + ZONE_RADIUS * Math.sin(a)]);
+      }
+      poly = clip(poly, -1, 0, 0); poly = clip(poly, 1, 0, MAP_W);   // inside the map
+      poly = clip(poly, 0, -1, 0); poly = clip(poly, 0, 1, MAP_H);
+      for (let j = 0; j < pts.length && poly.length; j++) {
+        if (j === i) continue;
+        const [bx, by] = pts[j];
+        // Closer to i than to j: (b - a)·p <= (|b|² - |a|²) / 2
+        poly = clip(poly, bx - x, by - y, (bx * bx + by * by - x * x - y * y) / 2);
+      }
+      return poly;
+    }
+
+    const area = poly => Math.abs(poly.reduce((s, p, k) => {
+      const q = poly[(k + 1) % poly.length];
+      return s + p[0] * q[1] - q[0] * p[1];
+    }, 0)) / 2;
+
+    // Draws the zones; returns the area each faction holds ('' = no faction).
+    function drawZones(svg, rows) {
+      const pts = rows.map(nodeXY);
+      const land = {};
+      rows.forEach((n, i) => {
+        const poly = zonePolygon(i, pts);
+        if (poly.length < 3) return;
+        const f = n.champion ? (n.champion.faction || '') : null;
+        if (f !== null) land[f] = (land[f] || 0) + area(poly);
+        svg.append(svgEl('polygon', {
+          points: poly.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' '),
+          fill: f === null ? '#444' : color(f), 'fill-opacity': f === null ? 0.12 : 0.3,
+          stroke: f === null ? '#555' : color(f), 'stroke-opacity': 0.8, 'stroke-width': 1.5,
+          'stroke-dasharray': f === null ? '6 5' : 'none',
+        }));
+      });
+      return land;
+    }
+
     function render(rows) {
       const svg = document.getElementById('map');
       svg.replaceChildren();
       drawLand(svg);
+      const land = drawZones(svg, rows);
       const held = {};
       for (const n of rows) {
         const f = n.champion ? (n.champion.faction || '') : null;
         if (f !== null) held[f] = (held[f] || 0) + 1;
-        const x = 40 + n.map_x * 920, y = 40 + n.map_y * 520;
+        const [x, y] = nodeXY(n);
         const g = svgEl('g', { class: 'node-dot' });
         g.append(svgEl('circle', { class: 'ring', cx: x, cy: y, r: 14, fill: 'none', stroke: f === null ? '#555' : color(f), 'stroke-width': 2 }));
         g.append(svgEl('circle', { cx: x, cy: y, r: 7, fill: f === null ? '#333' : color(f) }));
-        const label = svgEl('text', { x, y: y + 30, 'text-anchor': 'middle', fill: '#bbb', 'font-size': 14, 'font-family': 'Courier New, monospace' });
+        // Labels stay inside the map near its edges.
+        const label = svgEl('text', { x: Math.min(Math.max(x, 80), MAP_W - 80), y: y + 30, 'text-anchor': 'middle', fill: '#bbb', 'font-size': 14, 'font-family': 'Courier New, monospace' });
         label.textContent = n.name;
         g.append(label);
         g.addEventListener('click', () => {
@@ -174,12 +240,15 @@
         svg.append(g);
       }
 
+      // Legend: nodes held and share of the claimed land, per faction.
+      const claimed = Object.values(land).reduce((a, b) => a + b, 0);
       const legend = document.getElementById('legend');
       legend.replaceChildren(...Object.keys(FACTION_COLORS).map(f => {
         const s = el('span');
         const sw = el('i', 'sw');
         sw.style.background = FACTION_COLORS[f];
-        s.append(sw, document.createTextNode(f + (held[f] ? ' · ' + held[f] : '')));
+        const pct = claimed && land[f] ? ` (${Math.round(100 * land[f] / claimed)}%)` : '';
+        s.append(sw, document.createTextNode(f + (held[f] ? ` · ${held[f]} node${held[f] > 1 ? 's' : ''}${pct}` : '')));
         return s;
       }));
 
@@ -188,8 +257,37 @@
       if (!rows.length) grid.append(el('div', 'empty', 'No nodes online yet.'));
     }
 
+    // ?demo: made-up nodes, to see the map without real ones.
+    const DEMO = new URLSearchParams(location.search).has('demo');
+    function demoRows() {
+      const factions = Object.keys(FACTION_COLORS);
+      const names = ['Brave Defender', 'Sneaky Alchemist', 'Jolly Navigator', 'Stoic Sentinel', 'Plucky Rookie',
+                     'Arcane Oracle', 'Fierce Warden', 'Dapper Bard', 'Swift Ranger', 'Cozy Healer'];
+      let seed = 42;
+      const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      return Array.from({ length: 12 }, (_, i) => {
+        const f = i === 5 ? null : factions[Math.floor(rnd() * 4)];   // mostly 4 factions, one empty node
+        const champ = f === null ? null : {
+          name: names[i % names.length] + ' #' + String(1000 + Math.floor(rnd() * 9000)),
+          faction: f, class: ['Scout', 'Hunter', 'Fighter'][i % 3], level: 3 + Math.floor(rnd() * 20),
+        };
+        const maxHp = 5000 + i * 300;
+        return {
+          node_id: i + 1, name: 'Demo Node ' + (i + 1), map_x: rnd(), map_y: rnd(), champion: champ,
+          boss: { name: 'Stone Golem', level: 1 + (i % 4), hp: Math.floor(maxHp * rnd()), maxHp },
+          top5: champ ? [{ name: champ.name, faction: f, class: champ.class, damage: 900 + i * 37 }] : [],
+          rarest: null,
+        };
+      });
+    }
+
     async function load() {
       const upd = document.getElementById('updated');
+      if (DEMO) {
+        render(demoRows());
+        upd.textContent = 'demo data (made up)';
+        return;
+      }
       try {
         const res = await fetch(SUPABASE_URL + '/rest/v1/node_state?select=node_id,name,map_x,map_y,champion,boss,top5,rarest,updated_day&order=name',
                                 { headers: { apikey: SUPABASE_KEY }, cache: 'no-store' });
