@@ -116,7 +116,7 @@
         const tags = el('div');
         const f = el('span', 'tag', c.faction || 'no faction');
         f.style.borderColor = color(c.faction);
-        tags.append(f, el('span', 'tag', c.class), el('span', 'tag', 'Lv. ' + c.level));
+        tags.append(f, el('span', 'tag', c.class), el('span', 'tag', 'Guardian ' + c.level));
         card.append(tags);
       } else {
         card.append(el('div', 'empty', 'No champion yet'));
