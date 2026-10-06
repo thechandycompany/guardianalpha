@@ -577,7 +577,9 @@
         const k = fkey(n), col = kcolor(k);
         const g = svgEl('g', { class: 'node-dot', tabindex: 0, role: 'button', 'aria-label': n.name });
         g.append(svgEl('polygon', { class: 'mine-ring', points: diamond(25), fill: 'none', stroke: '#fff', 'stroke-width': 1.5, filter: 'url(#glow)' }));
-        g.append(svgEl('polygon', { class: 'ring', points: diamond(16), fill: 'none', stroke: col, 'stroke-width': 2, filter: 'url(#glow)' }));
+        // A virtual node (lives online; pets reach it over home Wi-Fi): a dashed ring.
+        g.append(svgEl('polygon', { class: 'ring', points: diamond(16), fill: 'none', stroke: col, 'stroke-width': 2, filter: 'url(#glow)',
+                                    'stroke-dasharray': n.is_virtual ? '4 3' : 'none' }));
         g.append(svgEl('polygon', { points: diamond(7), fill: k === OPEN ? '#333' : col, filter: 'url(#glow)' }));
         const label = svgEl('text', {
           y: 14, 'text-anchor': 'middle', fill: '#cfefff',
@@ -723,7 +725,8 @@
         mini.title = 'boss HP';
         mini.append(f);
         right.append(mini);
-        row.append(right, el('div', 'who', n.champion ? n.champion.name + ' · Lv ' + n.champion.level : 'Open: no champion'));
+        row.append(right, el('div', 'who', (n.is_virtual ? 'virtual · ' : '')
+          + (n.champion ? n.champion.name + ' · Lv ' + n.champion.level : 'Open: no champion')));
         row.onclick = () => select(n.node_id, true);
         row.onkeydown = e => { if (e.key === 'Enter') select(n.node_id, true); };
         row.onmouseenter = () => showTip(n);
@@ -753,7 +756,8 @@
 
       const h = el('h2');
       h.append(swatch(fkey(n)), n.name);
-      box.append(h, el('div', 'terr', `${n._sq} squares · ${n.champion ? pct(n._sq, claimedSquares()) + ' of the claimed grid' : 'unclaimed'}`));
+      box.append(h, el('div', 'terr', (n.is_virtual ? 'Virtual node: pets reach it over home Wi-Fi · ' : '')
+        + `${n._sq} squares · ${n.champion ? pct(n._sq, claimedSquares()) + ' of the claimed grid' : 'unclaimed'}`));
 
       box.append(el('div', 'label', '⚔ Champion'));
       if (n.champion) {
@@ -930,6 +934,7 @@
           boss: { name: 'Stone Golem', level: 1 + (i % 4), hp: Math.floor(maxHp * rnd()), maxHp },
           top5: champ ? [{ name: champ.name, faction: f, class: champ.class, damage: 900 + i * 37 }] : [],
           rarest: null,
+          is_virtual: i % 4 === 3,   // a few virtual ones, to see how they look
         };
       });
       // One pet leads two nodes, hits a third and found something, to try "Your pet" with.
@@ -971,7 +976,7 @@
         return;
       }
       try {
-        const res = await fetch(SUPABASE_URL + '/rest/v1/node_state?select=node_id,name,map_x,map_y,champion,boss,top5,rarest,updated_day&order=name',
+        const res = await fetch(SUPABASE_URL + '/rest/v1/node_state?select=node_id,name,map_x,map_y,champion,boss,top5,rarest,updated_day,is_virtual&order=name',
                                 { headers: { apikey: SUPABASE_KEY }, cache: 'no-store' });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         show(await res.json());
