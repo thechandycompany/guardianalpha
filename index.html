@@ -5,60 +5,265 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <!-- Closed alpha: keep it out of search engines. -->
   <meta name="robots" content="noindex, nofollow">
-  <title>virtpet · leaderboard (closed alpha)</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%226%22 fill=%22%23c77dff%22/%3E%3C/svg%3E">
+  <title>The Grid · virtpet (closed alpha)</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Cpolygon points=%228,1 15,8 8,15 1,8%22 fill=%22%2338d6e8%22/%3E%3C/svg%3E">
   <style>
     :root {
-      --bg: #1a1a1a; --card: #111; --line: #333; --text: #e0e0e0; --muted: #999; --accent: #c77dff;
+      --bg: #07090f; --panel: rgba(11, 15, 24, 0.92); --line: #1a2333; --line2: #2a3850;
+      --text: #d8e3ef; --muted: #7d8ba0; --accent: #38d6e8;
     }
     * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
-      font-family: 'Courier New', monospace; background: var(--bg); color: var(--text);
-      margin: 0; padding: 16px; text-align: center;
+      margin: 0; overflow: hidden; background: var(--bg); color: var(--text);
+      font: 14px/1.45 ui-monospace, 'SF Mono', Menlo, Consolas, 'Courier New', monospace;
     }
-    h1 { color: var(--accent); margin: 8px 0 2px; }
-    .sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
-    .map-wrap {
-      max-width: 900px; margin: 0 auto; border: 2px solid var(--accent); border-radius: 12px;
-      overflow: hidden; background: #0d1018;
+    button, input, select { font: inherit; color: inherit; }
+    [hidden] { display: none !important; }
+
+    /* The whole page is one screen: header on top, the map fills the rest. */
+    .app { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
+
+    header {
+      position: relative; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+      padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--bg);
     }
-    svg { display: block; width: 100%; height: auto; }
-    .node-dot { cursor: pointer; }
-    .node-dot:hover circle.ring { stroke-width: 3; }
-    .legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; margin: 12px auto; max-width: 900px; font-size: 13px; }
-    .legend span { white-space: nowrap; }
-    .sw { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; max-width: 980px; margin: 16px auto; }
-    .card { background: var(--card); border: 2px solid var(--line); border-radius: 10px; padding: 14px 16px; text-align: left; }
-    .card.flash { border-color: var(--accent); }
-    .card h2 { font-size: 17px; margin: 0 0 10px; color: #7db4ff; }
-    .label { font-size: 12px; color: var(--muted); margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 1px; }
-    .champ { font-size: 16px; }
-    .tag { display: inline-block; font-size: 11px; color: #ccc; border: 1px solid #444; border-radius: 10px; padding: 1px 8px; margin: 3px 3px 0 0; }
-    .bar { position: relative; background: #333; border: 1px solid #555; border-radius: 4px; height: 16px; overflow: hidden; }
-    .bar div { height: 100%; background: #e04b4b; }
+    .brand { display: flex; align-items: baseline; gap: 14px; flex: none; }
+    h1 {
+      margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 5px; text-transform: uppercase; white-space: nowrap;
+      color: var(--accent); text-shadow: 0 0 12px rgba(56, 214, 232, 0.45);
+    }
+    .status { font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; }
+    .status::before {
+      content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px;
+      vertical-align: 1px; background: #4caf50; box-shadow: 0 0 6px #4caf50;
+    }
+    .status.loading::before { background: #445; box-shadow: none; }
+    .status.demo::before { background: #e8b931; box-shadow: 0 0 6px #e8b931; }
+    .status.err { color: #e0443e; }
+    .status.err::before { background: #e0443e; box-shadow: 0 0 6px #e0443e; }
+
+    .field {
+      display: flex; align-items: center; gap: 8px; background: #0b0f18; border: 1px solid var(--line);
+      border-radius: 4px; padding: 0 10px; height: 34px;
+    }
+    .field:focus-within { border-color: var(--accent); }
+    .field label { font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; }
+    .field input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; height: 100%; font-size: 16px; }
+    @media (min-width: 600px) { .field input { font-size: 13px; } }
+    .field input::placeholder { color: #4a586e; }
+    .x { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 2px; font-size: 16px; line-height: 1; }
+    .x:hover { color: var(--text); }
+    #petField { width: 300px; flex: none; }
+
+    .iconbtn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 34px; height: 34px;
+      padding: 0 9px; background: var(--panel); border: 1px solid var(--line2); border-radius: 4px; cursor: pointer; font-size: 14px;
+    }
+    .iconbtn:hover { border-color: var(--accent); }
+
+    /* Faction filter: one scrollable row. */
+    .chips { flex: 1; min-width: 0; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+    .chips::-webkit-scrollbar { display: none; }
+    .chip {
+      --c: var(--accent); flex: none; display: inline-flex; align-items: center; gap: 7px; font-size: 12px; cursor: pointer;
+      background: #0b0f18; border: 1px solid var(--line); border-radius: 3px; padding: 5px 10px;
+    }
+    .chip:hover { border-color: var(--line2); }
+    .chip.on { border-color: var(--c); box-shadow: inset 0 0 0 1px var(--c), 0 0 10px -2px var(--c); }
+    .chip .n { color: var(--muted); }
+    .sw { display: inline-block; width: 9px; height: 9px; background: var(--c); transform: rotate(45deg); flex: none; }
+
+    .about {
+      position: absolute; right: 16px; top: calc(100% + 8px); width: min(420px, calc(100vw - 32px));
+      background: #0b0f18; border: 1px solid var(--line2); border-radius: 6px; padding: 12px 14px;
+      font-size: 12px; line-height: 1.6; color: var(--muted);
+    }
+    .about b { color: var(--text); }
+
+    /* ---- The map stage ---- */
+    .stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: #05070d; }
+    .stage::after {   /* faint scanlines */
+      content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+      background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 3px);
+    }
+    #map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; user-select: none; }
+    #map.grabbing { cursor: grabbing; }
+    .zone, .node-dot { transition: opacity 0.2s; }
+    .zone.dim { opacity: 0.1; }
+    .zone.sel .edge { stroke: #fff; stroke-opacity: 1; }
+    .node-dot { cursor: pointer; outline: none; }
+    .node-dot.dim { opacity: 0.25; }
+    .node-dot.dim text { display: none; }
+    .node-dot .ring { animation: pulse 2.4s ease-in-out infinite; }
+    .node-dot:hover .ring, .node-dot:focus .ring, .node-dot.sel .ring { stroke-width: 3; animation: none; }
+    .node-dot.sel .ring { stroke: #fff; }
+    .node-dot .mine-ring { display: none; }
+    .node-dot.mine .mine-ring { display: inline; }
+    /* Zoomed out with nodes close together: only the important labels. */
+    #map.far .node-dot:not(.sel):not(.mine):not(:hover):not(:focus) text { display: none; }
+    @keyframes pulse { 50% { opacity: 0.35; } }
+
+    .tip {
+      position: absolute; z-index: 4; display: none; pointer-events: none; text-align: left; white-space: nowrap;
+      transform: translate(-50%, -100%); background: rgba(7, 9, 15, 0.95);
+      border: 1px solid var(--line2); border-radius: 3px; padding: 6px 9px; font-size: 12px;
+    }
+    .tip.below { transform: translate(-50%, 0); }
+    .tip b { color: #fff; }
+    .tip .muted { color: var(--muted); }
+
+    .petbar {
+      position: absolute; z-index: 3; left: 12px; top: 12px; max-width: calc(100% - 400px);
+      display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; padding: 8px 12px; font-size: 12px;
+      background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 6px; backdrop-filter: blur(6px);
+    }
+    .petbar b { color: #fff; }
+    .petbar .muted { color: var(--muted); }
+
+    .ctrls { position: absolute; z-index: 3; left: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 4px; }
+    #openPanel { position: absolute; z-index: 3; top: 12px; right: 12px; }
+
+    /* ---- Node panel: floats on the right (desktop), bottom sheet (mobile) ---- */
+    .panel {
+      position: absolute; z-index: 3; top: 12px; right: 12px; bottom: 12px; width: 340px;
+      display: flex; flex-direction: column; overflow: hidden;
+      background: var(--panel); border: 1px solid var(--line2); border-radius: 6px; backdrop-filter: blur(8px);
+    }
+    .panel.closed { display: none; }
+    .ph {
+      position: relative; flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      height: 44px; padding: 0 8px 0 14px; border-bottom: 1px solid var(--line);
+      font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase;
+    }
+    .ph .r { display: flex; align-items: center; gap: 10px; }
+    .ph .iconbtn { min-width: 28px; height: 28px; background: none; border-color: transparent; font-size: 13px; }
+    .ph .iconbtn:hover { border-color: var(--line2); }
+    .link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font-size: inherit; letter-spacing: inherit; text-transform: inherit; }
+    .tools { flex: none; display: flex; gap: 8px; padding: 10px; border-bottom: 1px solid var(--line); }
+    .tools .field { flex: 1; min-width: 0; }
+    .tools select {
+      flex: none; background: #0b0f18; border: 1px solid var(--line); border-radius: 4px; height: 34px; padding: 0 6px; font-size: 12px;
+    }
+    .pbody { flex: 1; overflow: auto; overscroll-behavior: contain; }
+    .panel.detailing .tools { display: none; }   /* search + sort are for the list */
+
+    .row {
+      display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 4px 12px; align-items: center;
+      padding: 9px 14px; border-bottom: 1px solid var(--line); cursor: pointer; outline: none;
+    }
+    .row:hover, .row:focus { background: rgba(56, 214, 232, 0.06); }
+    .row .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row .who { grid-column: 2; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row .right { grid-row: 1 / span 2; grid-column: 3; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+    .mini { width: 56px; height: 4px; background: #1d2433; border-radius: 2px; overflow: hidden; }
+    .mini div { height: 100%; background: #e0443e; }
+    .badge { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: #fff; border: 1px solid #fff; border-radius: 2px; padding: 0 5px; }
+    .empty { color: var(--muted); padding: 14px; font-size: 13px; }
+
+    .detail { padding: 12px 14px 16px; }
+    .detail .empty { padding: 0; }
+    .nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 12px; }
+    .nav .step { display: flex; gap: 6px; }
+    .btn { background: #0b0f18; border: 1px solid var(--line); border-radius: 3px; padding: 3px 9px; cursor: pointer; font-size: 12px; }
+    .btn:hover:not(:disabled) { border-color: var(--line2); }
+    .btn:disabled { opacity: 0.35; cursor: default; }
+    .detail h2 { display: flex; align-items: center; gap: 10px; font-size: 17px; margin: 0 0 2px; color: #fff; }
+    .detail .terr { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .label { font-size: 11px; color: var(--muted); margin: 14px 0 5px; text-transform: uppercase; letter-spacing: 1px; }
+    .tag { display: inline-block; font-size: 11px; color: #ccd; border: 1px solid var(--line2); border-radius: 2px; padding: 1px 7px; margin: 4px 4px 0 0; }
+    .bar { position: relative; background: #1d2433; border-radius: 3px; height: 16px; overflow: hidden; }
+    .bar div { height: 100%; background: #e0443e; }
     .bar span { position: absolute; right: 6px; top: 0; line-height: 16px; font-size: 11px; color: #fff; text-shadow: 0 0 2px #000; }
-    ol { margin: 4px 0 0; padding-left: 22px; font-size: 14px; }
-    ol li { margin: 2px 0; }
+    ol { margin: 0; padding-left: 22px; }
+    ol li { margin: 3px 0; }
     ol li .dmg { float: right; color: var(--muted); }
-    .empty { color: #777; font-size: 14px; }
-    .foot { color: #777; font-size: 12px; max-width: 640px; margin: 24px auto 8px; line-height: 1.5; }
-    .err { color: #e04b4b; }
+    .me { outline: 1px solid rgba(255, 255, 255, 0.5); outline-offset: 2px; border-radius: 2px; }
+
+    @media (max-width: 860px) {
+      header { padding: 10px 12px; gap: 8px 10px; }
+      h1 { font-size: 19px; letter-spacing: 4px; }
+      .brand { flex: 1; min-width: 0; }
+      #aboutBtn { order: 2; }
+      #petField { order: 3; width: 100%; }
+      .chips { order: 4; flex-basis: 100%; }
+      .about { right: 12px; }
+      .petbar { left: 10px; top: 10px; max-width: calc(100% - 64px); }
+      .ctrls { left: auto; right: 10px; top: 10px; bottom: auto; }
+      #openPanel { display: none !important; }
+      /* Bottom sheet: a slim bar when closed, 55% of the map when open. */
+      .panel, .panel.closed {
+        display: flex; top: auto; left: 0; right: 0; bottom: 0; width: auto; height: 55%;
+        border-radius: 12px 12px 0 0; border-bottom: 0; border-left: 0; border-right: 0;
+      }
+      .panel.closed { height: 52px; }
+      .panel.closed .tools, .panel.closed .pbody { display: none; }
+      .ph { height: 52px; cursor: pointer; padding-top: 6px; }
+      .ph::before {
+        content: ''; position: absolute; top: 6px; left: 50%; width: 36px; height: 4px; margin-left: -18px;
+        border-radius: 2px; background: var(--line2);
+      }
+    }
   </style>
 </head>
 <body>
-  <h1>virtpet</h1>
-  <div class="sub">Node leaderboards · closed alpha · <span id="updated">loading…</span></div>
+  <div class="app">
+    <header>
+      <div class="brand">
+        <h1>The Grid</h1>
+        <span class="status loading" id="status">loading</span>
+      </div>
+      <div class="chips" id="chips" role="group" aria-label="filter by faction"></div>
+      <div class="field" id="petField">
+        <label for="pet">◆ Your pet</label>
+        <input id="pet" list="pets" placeholder="e.g. Brave Defender #4821" autocomplete="off" spellcheck="false">
+        <button class="x" id="petClear" aria-label="clear your pet" hidden>✕</button>
+      </div>
+      <datalist id="pets"></datalist>
+      <button class="iconbtn" id="aboutBtn" aria-label="about this page" aria-expanded="false">ⓘ</button>
+      <div class="about" id="about" hidden>
+        <b>The Grid</b> is made up: a node's spot on it has nothing to do with where it really is.
+        Pets show here only by their generated names. Nothing anyone types, no pictures, no locations,
+        no accounts, and no cookies or tracking. Boards update when nodes report in.<br><br>
+        Drag to move, scroll or pinch to zoom, click a node for its boards.
+        Keys: <b>+</b> / <b>−</b> zoom, <b>0</b> fit, <b>Esc</b> back.
+      </div>
+    </header>
 
-  <div class="map-wrap"><svg id="map" viewBox="0 0 1000 600" aria-label="map of nodes"></svg></div>
-  <div class="legend" id="legend"></div>
-  <div class="grid" id="nodes"></div>
+    <div class="stage" id="stage">
+      <svg id="map" aria-label="map of nodes"></svg>
+      <div class="tip" id="tip"></div>
+      <div class="petbar" id="petbar" hidden></div>
+      <div class="ctrls">
+        <button class="iconbtn" id="zoomIn" aria-label="zoom in">+</button>
+        <button class="iconbtn" id="zoomOut" aria-label="zoom out">−</button>
+        <button class="iconbtn" id="zoomFit" aria-label="fit the whole grid">⤢</button>
+      </div>
+      <button class="iconbtn" id="openPanel" hidden>☰ Nodes</button>
 
-  <div class="foot">
-    The map is made up: a node's spot on it has nothing to do with where it really is.
-    Pets show here only by their generated names (like "Brave Defender #4821"). Nothing anyone
-    types, no pictures, no locations, no accounts, and no cookies or tracking on this page.
-    Boards update when nodes report in.
+      <aside class="panel" id="panel">
+        <div class="ph" id="ph">
+          <span id="phTitle"></span>
+          <span class="r">
+            <button class="link" id="clear" hidden>Clear filters</button>
+            <button class="iconbtn" id="phToggle"></button>
+          </span>
+        </div>
+        <div class="tools">
+          <div class="field">
+            <input id="search" placeholder="Search" autocomplete="off" spellcheck="false" aria-label="search nodes or champions">
+            <button class="x" id="searchClear" aria-label="clear search" hidden>✕</button>
+          </div>
+          <select id="sort" aria-label="sort">
+            <option value="name">A–Z</option>
+            <option value="land">Most land</option>
+            <option value="level">Top level</option>
+            <option value="boss">Boss low</option>
+          </select>
+        </div>
+        <div class="pbody" id="pbody"></div>
+      </aside>
+    </div>
   </div>
 
   <script>
@@ -66,14 +271,19 @@
     const SUPABASE_URL = 'https://fkeiqvlwujxjlxaducge.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_JBw_SlIMnqg6k96ZsdqabQ_n50CMqfZ';
 
-    // Faction colors (virtpet/node_protocol.h order; TODO.md). Unaligned = gray.
+    // Faction colors (virtpet/node_protocol.h order; TODO.md).
     const FACTION_COLORS = {
       'Signal Keepers': '#38d6e8', 'Ember Legion': '#e0443e', 'Gatekeepers': '#9b5de5',
       'Wayfinders': '#4caf50', 'Trackers': '#e8b931', 'Dreamwardens': '#3a4fb8', 'Circuit Kin': '#f08a24',
     };
-    const NO_FACTION = '#777';
-    const color = f => FACTION_COLORS[f] || NO_FACTION;
+    // A node's "key" for filtering: its champion's faction, UNALIGNED for a
+    // champion with no faction, OPEN for no champion.
+    const OPEN = 'open', UNALIGNED = '_';
+    const fkey = n => !n.champion ? OPEN : (n.champion.faction || UNALIGNED);
+    const kcolor = k => k === OPEN ? '#667' : (FACTION_COLORS[k] || '#777');
+    const kname = k => k === OPEN ? 'Open' : k === UNALIGNED ? 'Unaligned' : k;
 
+    const $ = id => document.getElementById(id);
     const el = (tag, cls, text) => {
       const e = document.createElement(tag);
       if (cls) e.className = cls;
@@ -86,187 +296,630 @@
       return e;
     };
     const fmt = n => Number(n).toLocaleString();
+    const pct = (a, b) => b ? Math.round(100 * a / b) + '%' : '0%';
+    const hpFrac = n => (n.boss && n.boss.maxHp) ? n.boss.hp / n.boss.maxHp : 1;
+    const swatch = k => { const s = el('i', 'sw'); s.style.setProperty('--c', kcolor(k)); return s; };
+    const isMobile = () => matchMedia('(max-width: 860px)').matches;
 
-    // A made-up landscape: fixed blobs from a seeded random, so it never changes between visits.
-    function drawLand(svg) {
-      let seed = 7;
-      const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-      svg.append(svgEl('rect', { width: 1000, height: 600, fill: '#0d1018' }));
-      for (let i = 0; i < 14; i++) {
-        svg.append(svgEl('ellipse', {
-          cx: 60 + rnd() * 880, cy: 50 + rnd() * 500, rx: 60 + rnd() * 150, ry: 40 + rnd() * 100,
-          fill: i % 3 ? '#16231b' : '#1b1f2e', opacity: 0.9,
-        }));
+    // ---- The world ----
+    // A grid of CELL-sized squares that grows with the number of nodes (same
+    // density at any size), so more nodes means more grid to zoom around in
+    // rather than a more crowded map. Each square goes to the node closest to
+    // its center, out to ZONE_RADIUS; a zone takes its champion's faction color.
+    const CELL = 25, ZONE_RADIUS = 170, BASE_NODES = 12;
+    let COLS = 40, ROWS = 24, W = 1000, H = 600;
+    function sizeWorld(count) {
+      const s = Math.max(1, Math.sqrt(count / BASE_NODES));
+      COLS = Math.round(40 * s); ROWS = Math.round(24 * s);
+      W = COLS * CELL; H = ROWS * CELL;
+    }
+    const nodeXY = n => [40 + n.map_x * (W - 80), 40 + n.map_y * (H - 80)];
+
+    // owner[r * COLS + c] = index of the node holding that square, or -1.
+    function cellOwners(pts) {
+      const owner = new Array(COLS * ROWS).fill(-1);
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const cx = (c + 0.5) * CELL, cy = (r + 0.5) * CELL;
+          let best = ZONE_RADIUS * ZONE_RADIUS;
+          pts.forEach(([x, y], i) => {
+            const d = (x - cx) ** 2 + (y - cy) ** 2;
+            if (d <= best) { best = d; owner[r * COLS + c] = i; }
+          });
+        }
       }
-      for (let i = 0; i < 40; i++) {
-        svg.append(svgEl('circle', { cx: rnd() * 1000, cy: rnd() * 600, r: 1 + rnd() * 1.5, fill: '#2b3348' }));
-      }
+      return owner;
     }
 
-    function nodeCard(n) {
-      const card = el('div', 'card');
-      card.id = 'node-' + n.node_id;
-      card.append(el('h2', null, n.name));
+    // Glow filter and vignette.
+    function drawDefs(svg) {
+      const defs = svgEl('defs');
+      const glow = svgEl('filter', { id: 'glow', x: '-50%', y: '-50%', width: '200%', height: '200%' });
+      glow.append(svgEl('feGaussianBlur', { stdDeviation: 3, result: 'b' }));
+      const merge = svgEl('feMerge');
+      merge.append(svgEl('feMergeNode', { in: 'b' }), svgEl('feMergeNode', { in: 'SourceGraphic' }));
+      glow.append(merge);
+      const vig = svgEl('radialGradient', { id: 'vignette', cx: '50%', cy: '50%', r: '70%' });
+      vig.append(svgEl('stop', { offset: '0%', 'stop-color': '#0b1830', 'stop-opacity': 0.9 }),
+                 svgEl('stop', { offset: '100%', 'stop-color': '#05070d', 'stop-opacity': 0 }));
+      defs.append(glow, vig);
+      svg.append(defs);
+    }
 
-      card.append(el('div', 'label', '⚔ Champion'));
+    // The backdrop: a neon grid with a few lit "data" squares from a seeded
+    // random, so it never changes between visits.
+    function drawGrid(svg) {
+      svg.append(svgEl('rect', { width: W, height: H, fill: 'url(#vignette)' }));
+      let seed = 7;
+      const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      for (let i = 0; i < Math.round(70 * W * H / 600000); i++) {
+        svg.append(svgEl('rect', {
+          x: Math.floor(rnd() * COLS) * CELL + 1, y: Math.floor(rnd() * ROWS) * CELL + 1,
+          width: CELL - 2, height: CELL - 2, fill: '#0e1a2c',
+        }));
+      }
+      let minor = '', major = '';
+      for (let c = 0; c <= COLS; c++) { const d = `M${c * CELL} 0V${H}`; if (c % 4) minor += d; else major += d; }
+      for (let r = 0; r <= ROWS; r++) { const d = `M0 ${r * CELL}H${W}`; if (r % 4) minor += d; else major += d; }
+      svg.append(svgEl('path', { d: minor, stroke: '#0f2236', 'stroke-width': 1, fill: 'none' }));
+      svg.append(svgEl('path', { d: major, stroke: '#17405a', 'stroke-width': 1, fill: 'none' }));
+      svg.append(svgEl('rect', { width: W, height: H, fill: 'none', stroke: '#1f5a78', 'stroke-width': 2 }));
+    }
+
+    // ---- State ----
+    // Filters live in the URL's #hash (bookmarkable, never sent to the server);
+    // ?demo stays in the query.
+    const DEMO = new URLSearchParams(location.search).has('demo');
+    const HASH = new URLSearchParams(location.hash.slice(1));
+    const state = {
+      rows: [], owner: null, panelOpen: !isMobile() || HASH.has('node'),
+      faction: HASH.get('f'), pet: HASH.get('pet') || '', node: HASH.get('node'), q: '', sort: 'name',
+    };
+    let zoneEls = [], dotEls = [];
+
+    function writeHash() {
+      const p = new URLSearchParams();
+      if (state.faction !== null) p.set('f', state.faction);
+      if (state.pet.trim()) p.set('pet', state.pet.trim());
+      if (state.node !== null) p.set('node', state.node);
+      const h = p.toString();
+      history.replaceState(null, '', location.pathname + location.search + (h ? '#' + h : ''));
+    }
+
+    // How your pet shows up on node n: champion, damage-board rank, rarest find.
+    function involvement(n) {
+      const me = state.pet.trim().toLowerCase();
+      if (!me) return { lead: false, rank: 0, found: false, any: false };
+      const is = name => !!name && name.toLowerCase() === me;
+      const lead = !!n.champion && is(n.champion.name);
+      const rank = (n.top5 || []).findIndex(r => is(r.name)) + 1;
+      const found = !!n.rarest && is(n.rarest.by);
+      return { lead, rank, found, any: lead || rank > 0 || found };
+    }
+
+    function visible(n) {
+      if (state.faction !== null && fkey(n) !== state.faction) return false;
+      if (state.pet.trim() && !involvement(n).any) return false;
+      const q = state.q.trim().toLowerCase();
+      if (q && !n.name.toLowerCase().includes(q) && !(n.champion && n.champion.name.toLowerCase().includes(q))) return false;
+      return true;
+    }
+    const filtered = () => state.faction !== null || !!state.pet.trim() || !!state.q.trim();
+
+    const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
+    const SORTS = {
+      name: byName,
+      land: (a, b) => b._sq - a._sq || byName(a, b),
+      level: (a, b) => (b.champion ? b.champion.level : -1) - (a.champion ? a.champion.level : -1) || byName(a, b),
+      boss: (a, b) => hpFrac(a) - hpFrac(b) || byName(a, b),
+    };
+    const listed = () => state.rows.filter(visible).sort(SORTS[state.sort]);
+    const selected = () => state.rows.find(n => String(n.node_id) === state.node) || null;
+    const claimedSquares = () => state.rows.reduce((s, n) => s + (n.champion ? n._sq : 0), 0);
+
+    // Opens a node's boards. fly: move the camera to it (from the list);
+    // otherwise just keep it on screen (clicked on the map).
+    function select(id, fly) {
+      state.node = id === null ? null : String(id);
+      if (id !== null) state.panelOpen = true;
+      applyState();
+      const n = selected();
+      if (n) { cam.touched = true; fly ? focusNode(n, true) : ensureVisible(n); }
+    }
+
+    // ---- Camera: pan + zoom over the world ----
+    // cx, cy = world point at the middle of the stage; z = screen px per world unit.
+    const cam = { cx: 500, cy: 300, z: 1, touched: false, ready: false, anim: 0 };
+    const stageWH = () => [$('stage').clientWidth, $('stage').clientHeight];
+    // Screen px of the stage the panel covers (so "center" means the visible part).
+    function insets() {
+      const [, h] = stageWH();
+      if (isMobile()) return { r: 0, b: state.panelOpen ? Math.round(h * 0.55) : 52 };
+      return { r: state.panelOpen ? 364 : 0, b: 0 };
+    }
+    const fitZ = () => {
+      const [w, h] = stageWH(), { r, b } = insets();
+      return Math.max(0.05, Math.min((w - r) / W, (h - b) / H) * 0.94);
+    };
+    // Markers grow when zoomed out, so nodes stay easy to see and tap on a big grid.
+    const markerScale = () => Math.min(3, Math.max(1, 0.85 / cam.z));
+    const toScreen = ([x, y]) => { const [w, h] = stageWH(); return [(x - cam.cx) * cam.z + w / 2, (y - cam.cy) * cam.z + h / 2]; };
+    const toWorld = (sx, sy) => { const [w, h] = stageWH(); return [cam.cx + (sx - w / 2) / cam.z, cam.cy + (sy - h / 2) / cam.z]; };
+
+    function clampCam() {
+      const { r, b } = insets();
+      cam.z = Math.min(Math.max(cam.z, fitZ() * 0.7), 4);
+      cam.cx = Math.min(Math.max(cam.cx, 0), W + r / (2 * cam.z));
+      cam.cy = Math.min(Math.max(cam.cy, 0), H + b / (2 * cam.z));
+    }
+
+    function applyCam() {
+      const [w, h] = stageWH();
+      if (!w || !h) return;
+      const svg = $('map'), vw = w / cam.z, vh = h / cam.z;
+      svg.setAttribute('viewBox', `${cam.cx - vw / 2} ${cam.cy - vh / 2} ${vw} ${vh}`);
+      // Labels stay 12px on screen at any zoom, just under the marker.
+      const k = markerScale(), ls = (12 / cam.z) / (14 * k), ly = 16 + 5 / (k * cam.z);
+      state.rows.forEach((n, i) => {
+        const [x, y] = nodeXY(n);
+        dotEls[i].setAttribute('transform', `translate(${x} ${y}) scale(${k})`);
+        dotEls[i].lastChild.setAttribute('transform', `translate(0 ${ly}) scale(${ls})`);
+      });
+      const spacing = Math.sqrt(W * H / Math.max(1, state.rows.length)) * cam.z;
+      svg.classList.toggle('far', spacing < 120);
+    }
+
+    function flyTo(cx, cy, z) {
+      cancelAnimationFrame(cam.anim);
+      const from = { cx: cam.cx, cy: cam.cy, z: cam.z }, t0 = performance.now(), D = 380;
+      const step = t => {
+        const p = Math.min(1, (t - t0) / D), e = 1 - (1 - p) ** 3;
+        cam.cx = from.cx + (cx - from.cx) * e;
+        cam.cy = from.cy + (cy - from.cy) * e;
+        cam.z = from.z * Math.pow(z / from.z, e);
+        applyCam();
+        if (p < 1) cam.anim = requestAnimationFrame(step);
+      };
+      cam.anim = requestAnimationFrame(step);
+    }
+    // Puts world point (x, y) in the middle of the visible part at zoom z.
+    const centerOn = (x, y, z, animate) => {
+      const { r, b } = insets(), t = [x + r / (2 * z), y + b / (2 * z), z];
+      if (animate) flyTo(...t);
+      else { [cam.cx, cam.cy, cam.z] = t; applyCam(); }
+    };
+    const fit = animate => centerOn(W / 2, H / 2, fitZ(), animate);
+    // The first view: the whole grid, except on a tall, narrow screen, where it
+    // fills the height instead (up to 2.2x) and you swipe sideways.
+    function home(animate) {
+      const [w, h] = stageWH(), { r, b } = insets();
+      const z = h - b > w - r ? Math.min(((h - b) / H) * 0.94, fitZ() * 2.2) : fitZ();
+      centerOn(W / 2, H / 2, z, animate);
+    }
+
+    function focusNode(n, zoomIn) {
+      const [x, y] = nodeXY(n), [w] = stageWH(), { r } = insets();
+      centerOn(x, y, zoomIn ? Math.max(cam.z, Math.min(1.3, (w - r) / 560)) : cam.z, true);
+    }
+    function ensureVisible(n) {
+      const [sx, sy] = toScreen(nodeXY(n)), [w, h] = stageWH(), { r, b } = insets(), m = 50;
+      if (sx < m || sy < m || sx > w - r - m || sy > h - b - m) focusNode(n, false);
+    }
+    // Zooms to fit a set of nodes (your pet's).
+    function fitNodes(nodes) {
+      if (!nodes.length) return;
+      const pts = nodes.map(nodeXY), xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+      const [w, h] = stageWH(), { r, b } = insets(), pad = 200;
+      const bw = Math.max(...xs) - Math.min(...xs) + 2 * pad, bh = Math.max(...ys) - Math.min(...ys) + 2 * pad;
+      const z = Math.min(1.3, (w - r) / bw, (h - b) / bh);
+      cam.touched = true;
+      centerOn((Math.max(...xs) + Math.min(...xs)) / 2, (Math.max(...ys) + Math.min(...ys)) / 2, z, true);
+    }
+    function zoomAt(sx, sy, f) {
+      const [wx, wy] = toWorld(sx, sy), [w, h] = stageWH();
+      cam.z *= f;
+      clampCam();
+      cam.cx = wx - (sx - w / 2) / cam.z;
+      cam.cy = wy - (sy - h / 2) / cam.z;
+      clampCam();
+      applyCam();
+    }
+    function zoomCenter(f) {
+      const [w, h] = stageWH(), { r, b } = insets();
+      cancelAnimationFrame(cam.anim);
+      cam.touched = true;
+      zoomAt((w - r) / 2, (h - b) / 2, f);
+      hideTip();
+    }
+
+    // ---- Drawing ----
+    function drawMap() {
+      const svg = $('map');
+      svg.replaceChildren();
+      drawDefs(svg);
+      drawGrid(svg);
+      const rows = state.rows, pts = rows.map(nodeXY);
+      const owner = state.owner = cellOwners(pts);
+      rows.forEach(n => n._sq = 0);
+      owner.forEach(o => { if (o >= 0) rows[o]._sq++; });
+
+      // Zones: lit squares with a bright edge where one zone ends.
+      const at = (c, r) => (c < 0 || r < 0 || c >= COLS || r >= ROWS) ? -1 : owner[r * COLS + c];
+      const fill = rows.map(() => ''), edge = rows.map(() => '');
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const i = at(c, r);
+          if (i < 0) continue;
+          const x = c * CELL, y = r * CELL;
+          fill[i] += `M${x + 2} ${y + 2}h${CELL - 4}v${CELL - 4}h${4 - CELL}z`;
+          if (at(c, r - 1) !== i) edge[i] += `M${x} ${y}h${CELL}`;
+          if (at(c, r + 1) !== i) edge[i] += `M${x} ${y + CELL}h${CELL}`;
+          if (at(c - 1, r) !== i) edge[i] += `M${x} ${y}v${CELL}`;
+          if (at(c + 1, r) !== i) edge[i] += `M${x + CELL} ${y}v${CELL}`;
+        }
+      }
+      zoneEls = rows.map((n, i) => {
+        const k = fkey(n), col = kcolor(k), open = k === OPEN;
+        const g = svgEl('g', { class: 'zone' });
+        g.append(svgEl('path', { d: fill[i], fill: col, 'fill-opacity': open ? 0.06 : 0.16 }));
+        g.append(svgEl('path', {
+          class: 'edge', d: edge[i], fill: 'none', stroke: col, 'stroke-width': 2, 'stroke-linecap': 'square',
+          'stroke-opacity': open ? 0.6 : 0.9, 'stroke-dasharray': open ? '5 5' : 'none', filter: open ? 'none' : 'url(#glow)',
+        }));
+        svg.append(g);
+        return g;
+      });
+
+      // Nodes: pulsing diamonds drawn around (0, 0) and placed (and scaled)
+      // by applyCam; a white outer ring marks the ones you lead.
+      const diamond = r => `0,${-r} ${r},0 0,${r} ${-r},0`;
+      dotEls = rows.map(n => {
+        const k = fkey(n), col = kcolor(k);
+        const g = svgEl('g', { class: 'node-dot', tabindex: 0, role: 'button', 'aria-label': n.name });
+        g.append(svgEl('polygon', { class: 'mine-ring', points: diamond(25), fill: 'none', stroke: '#fff', 'stroke-width': 1.5, filter: 'url(#glow)' }));
+        g.append(svgEl('polygon', { class: 'ring', points: diamond(16), fill: 'none', stroke: col, 'stroke-width': 2, filter: 'url(#glow)' }));
+        g.append(svgEl('polygon', { points: diamond(7), fill: k === OPEN ? '#333' : col, filter: 'url(#glow)' }));
+        const label = svgEl('text', {
+          y: 14, 'text-anchor': 'middle', fill: '#cfefff',
+          'font-size': 14, 'font-family': 'ui-monospace, Menlo, Consolas, monospace', 'letter-spacing': 1,
+          stroke: '#05070d', 'stroke-width': 4, 'paint-order': 'stroke',
+        });
+        label.textContent = n.name;
+        g.append(label);
+        g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(n.node_id, true); } });
+        g.addEventListener('mouseenter', () => showTip(n));
+        g.addEventListener('focus', () => showTip(n));
+        g.addEventListener('mouseleave', hideTip);
+        g.addEventListener('blur', hideTip);
+        svg.append(g);
+        return g;
+      });
+    }
+
+    function showTip(n) {
+      if (ptrs.size) return;
+      const [sx, sy] = toScreen(nodeXY(n)), [w, h] = stageWH();
+      if (sx < 0 || sy < 0 || sx > w || sy > h) return;
+      const tip = $('tip'), b = n.boss || {}, off = 16 * markerScale() * cam.z + 10;
+      tip.replaceChildren(
+        el('b', null, n.name),
+        el('div', null, n.champion ? n.champion.name + ' · ' + kname(fkey(n)) : 'Open: no champion'),
+        el('div', 'muted', (b.name || 'Boss') + ' ' + pct(b.hp || 0, b.maxHp || 0) + ' HP · ' + n._sq + ' squares'));
+      const below = sy - off < 80;
+      tip.style.left = Math.min(Math.max(sx, 110), w - 110) + 'px';
+      tip.style.top = (below ? sy + off : sy - off) + 'px';
+      tip.classList.toggle('below', below);
+      tip.style.display = 'block';
+    }
+    const hideTip = () => { $('tip').style.display = 'none'; };
+
+    // Re-applies filters, highlights and panels without redrawing the map.
+    function applyState() {
+      state.rows.forEach((n, i) => {
+        const sel = String(n.node_id) === state.node, dim = !visible(n) && !sel;
+        zoneEls[i].classList.toggle('dim', dim);
+        zoneEls[i].classList.toggle('sel', sel);
+        dotEls[i].classList.toggle('dim', dim);
+        dotEls[i].classList.toggle('sel', sel);
+        dotEls[i].classList.toggle('mine', involvement(n).lead);
+      });
+      renderChips();
+      renderPet();
+      renderPanel();
+      $('petClear').hidden = !state.pet;
+      $('searchClear').hidden = !state.q;
+      writeHash();
+    }
+
+    function renderChips() {
+      const count = {}, land = {};
+      for (const n of state.rows) {
+        const k = fkey(n);
+        count[k] = (count[k] || 0) + 1;
+        land[k] = (land[k] || 0) + n._sq;
+      }
+      const claimed = claimedSquares();
+      // Only factions that hold something today (plus the one filtered on).
+      const keys = [...Object.keys(FACTION_COLORS), UNALIGNED, OPEN].filter(k => count[k] || state.faction === k);
+      const all = el('button', 'chip' + (state.faction === null ? ' on' : ''));
+      all.append('All', el('span', 'n', String(state.rows.length)));
+      all.onclick = () => { state.faction = null; applyState(); };
+      $('chips').replaceChildren(all, ...keys.map(k => {
+        const b = el('button', 'chip' + (state.faction === k ? ' on' : ''));
+        b.style.setProperty('--c', kcolor(k));
+        b.setAttribute('aria-pressed', state.faction === k);
+        b.append(swatch(k), kname(k));
+        if (count[k]) b.append(el('span', 'n', count[k] + (k === OPEN ? '' : ' · ' + pct(land[k], claimed))));
+        b.onclick = () => { state.faction = state.faction === k ? null : k; applyState(); };
+        return b;
+      }));
+    }
+
+    // "Your pet": what it leads and where it's on the boards, over the map.
+    function renderPet() {
+      const names = new Set();
+      for (const n of state.rows) {
+        if (n.champion) names.add(n.champion.name);
+        for (const r of n.top5 || []) names.add(r.name);
+        if (n.rarest) names.add(n.rarest.by);
+      }
+      $('pets').replaceChildren(...[...names].filter(Boolean).sort().map(v => { const o = el('option'); o.value = v; return o; }));
+
+      const bar = $('petbar');
+      if (!state.pet.trim()) { bar.hidden = true; return; }
+      let lead = 0, sq = 0, boards = 0, best = 0, finds = 0;
+      const mine = [];
+      for (const n of state.rows) {
+        const inv = involvement(n);
+        if (inv.any) mine.push(n);
+        if (inv.lead) { lead++; sq += n._sq; }
+        if (inv.rank) { boards++; best = Math.max(best, n.top5[inv.rank - 1].damage); }
+        if (inv.found) finds++;
+      }
+      bar.hidden = false;
+      if (!mine.length) {
+        bar.replaceChildren(el('span', 'muted', `"${state.pet.trim()}" isn't on any board today. Use the exact name on your pet's screen.`));
+        return;
+      }
+      const item = (b, rest) => { const s = el('span'); s.append(el('b', null, b), rest); return s; };
+      const show = el('button', 'link', 'Show ›');
+      show.onclick = () => fitNodes(mine);
+      bar.replaceChildren(
+        item('◆ ' + lead, ` led · ${pct(sq, claimedSquares())} of the grid`),
+        item(String(boards), ` board${boards === 1 ? '' : 's'}` + (best ? ` · best ${fmt(best)}` : '')),
+        ...(finds ? [item(String(finds), ` rarest find${finds === 1 ? '' : 's'}`)] : []),
+        show);
+    }
+
+    function renderPanel() {
+      const open = state.panelOpen, total = state.rows.length;
+      $('panel').classList.toggle('closed', !open);
+      $('openPanel').hidden = open;
+      $('phTitle').textContent = filtered() ? `${listed().length} of ${total} nodes` : `${total} node${total === 1 ? '' : 's'}`;
+      $('clear').hidden = !filtered();
+      const t = $('phToggle');
+      t.textContent = isMobile() ? (open ? '▾' : '▴') : '✕';
+      t.setAttribute('aria-label', open ? 'hide the node list' : 'show the node list');
+      const n = selected();
+      $('panel').classList.toggle('detailing', !!n);
+      $('pbody').replaceChildren(n ? detail(n) : list());
+    }
+    const togglePanel = open => { state.panelOpen = open; renderPanel(); };
+
+    function list() {
+      const box = el('div'), shown = listed();
+      if (!state.rows.length) { box.append(el('div', 'empty', 'No nodes online yet.')); return box; }
+      if (!shown.length) { box.append(el('div', 'empty', 'No nodes match.')); return box; }
+      for (const n of shown) {
+        const inv = involvement(n);
+        const row = el('div', 'row');
+        row.tabIndex = 0;
+        row.append(swatch(fkey(n)), el('div', 'nm', n.name));
+        const right = el('div', 'right');
+        if (inv.lead) right.append(el('span', 'badge', 'Leader'));
+        else if (inv.rank) right.append(el('span', 'badge', '#' + inv.rank));
+        const mini = el('div', 'mini'), f = el('div');
+        f.style.width = Math.round(100 * hpFrac(n)) + '%';
+        mini.title = 'boss HP';
+        mini.append(f);
+        right.append(mini);
+        row.append(right, el('div', 'who', n.champion ? n.champion.name + ' · Lv ' + n.champion.level : 'Open: no champion'));
+        row.onclick = () => select(n.node_id, true);
+        row.onkeydown = e => { if (e.key === 'Enter') select(n.node_id, true); };
+        row.onmouseenter = () => showTip(n);
+        row.onmouseleave = hideTip;
+        box.append(row);
+      }
+      return box;
+    }
+
+    function detail(n) {
+      const box = el('div', 'detail'), inv = involvement(n);
+      const order = listed(), pos = order.indexOf(n);
+      const nav = el('div', 'nav');
+      const back = el('button', 'link', '← All nodes');
+      back.onclick = () => select(null);
+      const step = el('div', 'step');
+      const prev = el('button', 'btn', '‹'), next = el('button', 'btn', '›');
+      prev.setAttribute('aria-label', 'previous node');
+      next.setAttribute('aria-label', 'next node');
+      prev.disabled = pos <= 0;
+      next.disabled = pos < 0 || pos >= order.length - 1;
+      prev.onclick = () => select(order[pos - 1].node_id, true);
+      next.onclick = () => select(order[pos + 1].node_id, true);
+      step.append(prev, next);
+      nav.append(back, step);
+      box.append(nav);
+
+      const h = el('h2');
+      h.append(swatch(fkey(n)), n.name);
+      box.append(h, el('div', 'terr', `${n._sq} squares · ${n.champion ? pct(n._sq, claimedSquares()) + ' of the claimed grid' : 'unclaimed'}`));
+
+      box.append(el('div', 'label', '⚔ Champion'));
       if (n.champion) {
-        const c = n.champion;
-        const d = el('div', 'champ', c.name);
-        card.append(d);
+        const c = n.champion, d = el('div', inv.lead ? 'me' : null, c.name);
+        if (inv.lead) d.append(' ', el('span', 'badge', 'You'));
+        box.append(d);
         const tags = el('div');
         const f = el('span', 'tag', c.faction || 'no faction');
-        f.style.borderColor = color(c.faction);
+        f.style.borderColor = kcolor(fkey(n));
         tags.append(f, el('span', 'tag', c.class), el('span', 'tag', 'Guardian ' + c.level));
-        card.append(tags);
+        box.append(tags);
       } else {
-        card.append(el('div', 'empty', 'No champion yet'));
+        box.append(el('div', 'empty', 'No champion yet: this node is up for grabs.'));
       }
 
       const b = n.boss || {};
-      card.append(el('div', 'label', '👹 ' + (b.name || 'Boss') + ' · Lv. ' + (b.level || 1)));
-      const bar = el('div', 'bar');
-      const fill = el('div');
-      fill.style.width = (b.maxHp ? Math.round(100 * b.hp / b.maxHp) : 0) + '%';
+      box.append(el('div', 'label', '👹 ' + (b.name || 'Boss') + ' · Lv. ' + (b.level || 1)));
+      const bar = el('div', 'bar'), fill = el('div');
+      fill.style.width = Math.round(100 * hpFrac(n)) + '%';
       bar.append(fill, el('span', null, fmt(b.hp || 0) + ' / ' + fmt(b.maxHp || 0)));
-      card.append(bar);
+      box.append(bar);
 
-      card.append(el('div', 'label', 'Top damage'));
+      box.append(el('div', 'label', 'Top damage'));
       if (n.top5 && n.top5.length) {
         const ol = el('ol');
-        for (const r of n.top5) {
-          const li = el('li', null, r.name + ' ');
-          li.style.color = r.faction ? color(r.faction) : '';
+        n.top5.forEach((r, k) => {
+          const li = el('li', inv.rank === k + 1 ? 'me' : null, r.name + ' ');
+          if (r.faction) li.style.color = kcolor(r.faction);
           li.append(el('span', 'dmg', fmt(r.damage)));
           ol.append(li);
-        }
-        card.append(ol);
-      } else {
-        card.append(el('div', 'empty', 'No hits yet'));
-      }
-
-      card.append(el('div', 'label', '🔍 Rarest find'));
-      card.append(n.rarest ? el('div', null, n.rarest.item + ' — ' + n.rarest.by)
-                           : el('div', 'empty', 'Nothing found yet'));
-      return card;
-    }
-
-    // ---- Territory zones ----
-    // Each node claims the land closer to it than to any other node (a Voronoi
-    // cell), out to ZONE_RADIUS, so a lone node holds a patch rather than the
-    // whole map. The zone takes the color of the champion's faction.
-    const MAP_W = 1000, MAP_H = 600, ZONE_RADIUS = 170;
-    const nodeXY = n => [40 + n.map_x * 920, 40 + n.map_y * 520];
-
-    // Keeps the part of convex polygon `poly` where nx*x + ny*y <= c.
-    function clip(poly, nx, ny, c) {
-      const out = [];
-      for (let i = 0; i < poly.length; i++) {
-        const p = poly[i], q = poly[(i + 1) % poly.length];
-        const dp = nx * p[0] + ny * p[1] - c, dq = nx * q[0] + ny * q[1] - c;
-        if (dp <= 0) out.push(p);
-        if ((dp < 0) !== (dq < 0) && dp !== dq) {
-          const t = dp / (dp - dq);
-          out.push([p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])]);
-        }
-      }
-      return out;
-    }
-
-    function zonePolygon(i, pts) {
-      const [x, y] = pts[i];
-      let poly = [];
-      for (let k = 0; k < 40; k++) {
-        const a = (k / 40) * 2 * Math.PI;
-        poly.push([x + ZONE_RADIUS * Math.cos(a), y + ZONE_RADIUS * Math.sin(a)]);
-      }
-      poly = clip(poly, -1, 0, 0); poly = clip(poly, 1, 0, MAP_W);   // inside the map
-      poly = clip(poly, 0, -1, 0); poly = clip(poly, 0, 1, MAP_H);
-      for (let j = 0; j < pts.length && poly.length; j++) {
-        if (j === i) continue;
-        const [bx, by] = pts[j];
-        // Closer to i than to j: (b - a)·p <= (|b|² - |a|²) / 2
-        poly = clip(poly, bx - x, by - y, (bx * bx + by * by - x * x - y * y) / 2);
-      }
-      return poly;
-    }
-
-    const area = poly => Math.abs(poly.reduce((s, p, k) => {
-      const q = poly[(k + 1) % poly.length];
-      return s + p[0] * q[1] - q[0] * p[1];
-    }, 0)) / 2;
-
-    // Draws the zones; returns the area each faction holds ('' = no faction).
-    function drawZones(svg, rows) {
-      const pts = rows.map(nodeXY);
-      const land = {};
-      rows.forEach((n, i) => {
-        const poly = zonePolygon(i, pts);
-        if (poly.length < 3) return;
-        const f = n.champion ? (n.champion.faction || '') : null;
-        if (f !== null) land[f] = (land[f] || 0) + area(poly);
-        svg.append(svgEl('polygon', {
-          points: poly.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' '),
-          fill: f === null ? '#444' : color(f), 'fill-opacity': f === null ? 0.12 : 0.3,
-          stroke: f === null ? '#555' : color(f), 'stroke-opacity': 0.8, 'stroke-width': 1.5,
-          'stroke-dasharray': f === null ? '6 5' : 'none',
-        }));
-      });
-      return land;
-    }
-
-    function render(rows) {
-      const svg = document.getElementById('map');
-      svg.replaceChildren();
-      drawLand(svg);
-      const land = drawZones(svg, rows);
-      const held = {};
-      for (const n of rows) {
-        const f = n.champion ? (n.champion.faction || '') : null;
-        if (f !== null) held[f] = (held[f] || 0) + 1;
-        const [x, y] = nodeXY(n);
-        const g = svgEl('g', { class: 'node-dot' });
-        g.append(svgEl('circle', { class: 'ring', cx: x, cy: y, r: 14, fill: 'none', stroke: f === null ? '#555' : color(f), 'stroke-width': 2 }));
-        g.append(svgEl('circle', { cx: x, cy: y, r: 7, fill: f === null ? '#333' : color(f) }));
-        // Labels stay inside the map near its edges.
-        const label = svgEl('text', { x: Math.min(Math.max(x, 80), MAP_W - 80), y: y + 30, 'text-anchor': 'middle', fill: '#bbb', 'font-size': 14, 'font-family': 'Courier New, monospace' });
-        label.textContent = n.name;
-        g.append(label);
-        g.addEventListener('click', () => {
-          const card = document.getElementById('node-' + n.node_id);
-          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          card.classList.add('flash');
-          setTimeout(() => card.classList.remove('flash'), 1500);
         });
-        svg.append(g);
+        box.append(ol);
+      } else {
+        box.append(el('div', 'empty', 'No hits yet'));
       }
 
-      // Legend: nodes held and share of the claimed land, per faction.
-      const claimed = Object.values(land).reduce((a, b) => a + b, 0);
-      const legend = document.getElementById('legend');
-      legend.replaceChildren(...Object.keys(FACTION_COLORS).map(f => {
-        const s = el('span');
-        const sw = el('i', 'sw');
-        sw.style.background = FACTION_COLORS[f];
-        const pct = claimed && land[f] ? ` (${Math.round(100 * land[f] / claimed)}%)` : '';
-        s.append(sw, document.createTextNode(f + (held[f] ? ` · ${held[f]} node${held[f] > 1 ? 's' : ''}${pct}` : '')));
-        return s;
-      }));
-
-      const grid = document.getElementById('nodes');
-      grid.replaceChildren(...rows.map(nodeCard));
-      if (!rows.length) grid.append(el('div', 'empty', 'No nodes online yet.'));
+      box.append(el('div', 'label', '🔍 Rarest find'));
+      box.append(n.rarest ? el('div', inv.found ? 'me' : null, n.rarest.item + ' — ' + n.rarest.by)
+                          : el('div', 'empty', 'Nothing found yet'));
+      return box;
     }
 
-    // ?demo: made-up nodes, to see the map without real ones.
-    const DEMO = new URLSearchParams(location.search).has('demo');
+    // ---- Controls ----
+    $('pet').value = state.pet;
+    $('pet').addEventListener('input', e => { state.pet = e.target.value; applyState(); });
+    $('petClear').onclick = () => { state.pet = ''; $('pet').value = ''; applyState(); };
+    $('search').addEventListener('input', e => { state.q = e.target.value; state.node = null; applyState(); });
+    $('searchClear').onclick = () => { state.q = ''; $('search').value = ''; applyState(); };
+    $('sort').addEventListener('change', e => { state.sort = e.target.value; applyState(); });
+    $('clear').onclick = e => {
+      e.stopPropagation();
+      state.faction = null; state.pet = ''; state.q = '';
+      $('pet').value = ''; $('search').value = '';
+      applyState();
+    };
+    $('ph').onclick = () => { if (isMobile()) togglePanel(!state.panelOpen); };
+    $('phToggle').onclick = e => { e.stopPropagation(); togglePanel(!state.panelOpen); };
+    $('openPanel').onclick = () => togglePanel(true);
+    $('zoomIn').onclick = () => zoomCenter(1.4);
+    $('zoomOut').onclick = () => zoomCenter(1 / 1.4);
+    $('zoomFit').onclick = () => { cam.touched = false; fit(true); };
+    $('aboutBtn').onclick = () => {
+      const a = $('about');
+      a.hidden = !a.hidden;
+      $('aboutBtn').setAttribute('aria-expanded', !a.hidden);
+    };
+    document.addEventListener('click', e => {
+      if (!$('about').hidden && !e.target.closest('#about, #aboutBtn')) $('about').hidden = true;
+    });
+    document.addEventListener('keydown', e => {
+      if (e.target.closest('input, select, textarea')) return;
+      if (e.key === 'Escape') { if (!$('about').hidden) $('about').hidden = true; else if (state.node !== null) select(null); }
+      else if (e.key === '+' || e.key === '=') zoomCenter(1.4);
+      else if (e.key === '-' || e.key === '_') zoomCenter(1 / 1.4);
+      else if (e.key === '0') { cam.touched = false; fit(true); }
+    });
+
+    // Drag to pan, pinch / wheel to zoom, click (without dragging) to pick.
+    const svg = $('map'), ptrs = new Map();
+    let g0 = null, moved = false;
+    function gestureStart() {
+      const p = [...ptrs.values()];
+      g0 = { cx: cam.cx, cy: cam.cy, z: cam.z, p };
+      if (p.length === 2) {
+        g0.d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1;
+        g0.m = [(p[0].x + p[1].x) / 2, (p[0].y + p[1].y) / 2];
+      }
+    }
+    svg.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      cancelAnimationFrame(cam.anim);
+      ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (ptrs.size === 1) moved = false;
+      gestureStart();
+    });
+    svg.addEventListener('pointermove', e => {
+      if (!ptrs.has(e.pointerId)) return;
+      ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const p = [...ptrs.values()], rect = svg.getBoundingClientRect(), [w, h] = stageWH();
+      if (p.length === 1) {
+        const dx = p[0].x - g0.p[0].x, dy = p[0].y - g0.p[0].y;
+        if (!moved && Math.hypot(dx, dy) < 5) return;
+        if (!moved) { moved = true; svg.setPointerCapture(e.pointerId); svg.classList.add('grabbing'); hideTip(); }
+        cam.cx = g0.cx - dx / cam.z;
+        cam.cy = g0.cy - dy / cam.z;
+      } else if (p.length === 2) {
+        moved = true;
+        const d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y), m = [(p[0].x + p[1].x) / 2, (p[0].y + p[1].y) / 2];
+        const wx = g0.cx + (g0.m[0] - rect.left - w / 2) / g0.z, wy = g0.cy + (g0.m[1] - rect.top - h / 2) / g0.z;
+        cam.z = g0.z * d / g0.d;
+        clampCam();
+        cam.cx = wx - (m[0] - rect.left - w / 2) / cam.z;
+        cam.cy = wy - (m[1] - rect.top - h / 2) / cam.z;
+      } else return;
+      cam.touched = true;
+      clampCam();
+      applyCam();
+    });
+    const pointerUp = e => {
+      if (!ptrs.delete(e.pointerId)) return;
+      svg.classList.remove('grabbing');
+      if (ptrs.size) gestureStart();
+    };
+    svg.addEventListener('pointerup', pointerUp);
+    svg.addEventListener('pointercancel', pointerUp);
+    svg.addEventListener('wheel', e => {
+      e.preventDefault();
+      cancelAnimationFrame(cam.anim);
+      cam.touched = true;
+      const r = svg.getBoundingClientRect();
+      zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)));
+      hideTip();
+    }, { passive: false });
+    // A click opens the node under it (or the node holding that square); empty space closes.
+    svg.addEventListener('click', e => {
+      if (moved) { moved = false; return; }
+      if (!state.owner) return;
+      const r = svg.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top;
+      let best = null, bd = Math.max(16 * markerScale() * cam.z + 4, 18);
+      for (const n of state.rows) {
+        const [x, y] = toScreen(nodeXY(n)), d = Math.hypot(x - sx, y - sy);
+        if (d < bd) { bd = d; best = n; }
+      }
+      if (!best) {
+        const [wx, wy] = toWorld(sx, sy), c = Math.floor(wx / CELL), rr = Math.floor(wy / CELL);
+        const i = (c >= 0 && c < COLS && rr >= 0 && rr < ROWS) ? state.owner[rr * COLS + c] : -1;
+        if (i >= 0) best = state.rows[i];
+      }
+      select(best ? best.node_id : null, false);
+    });
+    new ResizeObserver(() => {
+      if (!cam.ready) return;
+      if (!cam.touched) home(false); else { clampCam(); applyCam(); }
+      renderPanel();
+    }).observe($('stage'));
+
+    // ?demo: made-up nodes, to see the map without real ones. ?demo=60 for 60 of them.
     function demoRows() {
       const factions = Object.keys(FACTION_COLORS);
       const names = ['Brave Defender', 'Sneaky Alchemist', 'Jolly Navigator', 'Stoic Sentinel', 'Plucky Rookie',
                      'Arcane Oracle', 'Fierce Warden', 'Dapper Bard', 'Swift Ranger', 'Cozy Healer'];
+      const count = Math.min(300, Math.max(12, parseInt(new URLSearchParams(location.search).get('demo'), 10) || 12));
       let seed = 42;
       const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-      return Array.from({ length: 12 }, (_, i) => {
-        const f = i === 5 ? null : factions[Math.floor(rnd() * 4)];   // mostly 4 factions, one empty node
+      const rows = Array.from({ length: count }, (_, i) => {
+        const f = i % 12 === 5 ? null : factions[Math.floor(rnd() * (count > 12 ? 7 : 4))];   // a few empty nodes
         const champ = f === null ? null : {
           name: names[i % names.length] + ' #' + String(1000 + Math.floor(rnd() * 9000)),
           faction: f, class: ['Scout', 'Hunter', 'Fighter'][i % 3], level: 3 + Math.floor(rnd() * 20),
@@ -279,26 +932,52 @@
           rarest: null,
         };
       });
+      // One pet leads two nodes, hits a third and found something, to try "Your pet" with.
+      const me = rows[0].champion;
+      rows[3].champion = { ...me };
+      rows[3].top5 = [{ name: me.name, faction: me.faction, class: me.class, damage: 1500 }, ...rows[3].top5];
+      rows[6].top5.push({ name: me.name, faction: me.faction, class: me.class, damage: 640 });
+      rows[2].rarest = { item: 'Glitch Shard', by: me.name };
+      return rows;
+    }
+
+    function setStatus(text, cls) {
+      const s = $('status');
+      s.textContent = text;
+      s.className = 'status' + (cls ? ' ' + cls : '');
+    }
+
+    function show(rows) {
+      const oldW = W;
+      state.rows = rows;
+      sizeWorld(rows.length);
+      drawMap();
+      applyState();
+      if (!cam.ready || W !== oldW) {
+        home(false);
+        cam.ready = true;
+        const n = selected();
+        if (n) focusNode(n, true);
+      } else {
+        clampCam();
+        applyCam();
+      }
     }
 
     async function load() {
-      const upd = document.getElementById('updated');
       if (DEMO) {
-        render(demoRows());
-        upd.textContent = 'demo data (made up)';
+        show(demoRows());
+        setStatus('demo data', 'demo');
         return;
       }
       try {
         const res = await fetch(SUPABASE_URL + '/rest/v1/node_state?select=node_id,name,map_x,map_y,champion,boss,top5,rarest,updated_day&order=name',
                                 { headers: { apikey: SUPABASE_KEY }, cache: 'no-store' });
         if (!res.ok) throw new Error('HTTP ' + res.status);
-        const rows = await res.json();
-        render(rows);
-        upd.textContent = rows.length + ' node' + (rows.length === 1 ? '' : 's') + ' · updated ' + new Date().toLocaleTimeString();
-        upd.className = '';
+        show(await res.json());
+        setStatus('live · ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
       } catch (err) {
-        upd.textContent = "couldn't load the boards (" + err.message + ')';
-        upd.className = 'err';
+        setStatus("couldn't load (" + err.message + ')', 'err');
       }
     }
 
