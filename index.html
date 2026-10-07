@@ -302,18 +302,34 @@
     const isMobile = () => matchMedia('(max-width: 860px)').matches;
 
     // ---- The world ----
-    // A grid of CELL-sized squares that grows with the number of nodes (same
-    // density at any size), so more nodes means more grid to zoom around in
-    // rather than a more crowded map. Each square goes to the node closest to
-    // its center, out to ZONE_RADIUS; a zone takes its champion's faction color.
-    const CELL = 25, ZONE_RADIUS = 170, BASE_NODES = 12;
-    let COLS = 40, ROWS = 24, W = 1000, H = 600;
-    function sizeWorld(count) {
-      const s = Math.max(1, Math.sqrt(count / BASE_NODES));
-      COLS = Math.round(40 * s); ROWS = Math.round(24 * s);
+    // Every node has a fixed spot in world units (world_x / world_y, placed by
+    // the server: supabase/functions/_shared/layout.ts) on a square lattice
+    // STEP apart: each physical node in the middle of a 3x3 block of its virtual
+    // nodes, blocks edge to edge. Each node holds the STEP x STEP tile of grid
+    // squares around it (the nearest node by square distance, out to half a
+    // step), so the map is a grid of tiles. The grid covers them all plus a
+    // margin and grows outward as blocks are added. A tile takes its
+    // champion's faction color.
+    const CELL = 25, STEP = 150, ZONE_HALF = STEP / 2, MIN_W = 1000, MIN_H = 600;
+    const TILE_CELLS = STEP / CELL;   // 6: the major grid lines are the tile borders
+    let COLS = 40, ROWS = 24, W = 1000, H = 600, ORIGIN_X = 0, ORIGIN_Y = 0;
+    // A node's world spot; one not placed yet gets a stand-in from its old 0..1 spot.
+    const worldXY = n => n.world_x != null ? [n.world_x, n.world_y] : [(n.map_x - 0.5) * MIN_W, (n.map_y - 0.5) * MIN_H];
+    function sizeWorld(rows) {
+      const pts = rows.map(worldXY), margin = ZONE_HALF + STEP;
+      let x0 = Math.min(0, ...pts.map(p => p[0])) - margin, x1 = Math.max(0, ...pts.map(p => p[0])) + margin;
+      let y0 = Math.min(0, ...pts.map(p => p[1])) - margin, y1 = Math.max(0, ...pts.map(p => p[1])) + margin;
+      if (x1 - x0 < MIN_W) { const pad = (MIN_W - (x1 - x0)) / 2; x0 -= pad; x1 += pad; }
+      if (y1 - y0 < MIN_H) { const pad = (MIN_H - (y1 - y0)) / 2; y0 -= pad; y1 += pad; }
+      // Snap to the tile borders (lattice point +- half a step), so the major
+      // lines are the tiles' edges and don't shift as the map grows.
+      ORIGIN_X = Math.floor((x0 - ZONE_HALF) / STEP) * STEP + ZONE_HALF;
+      ORIGIN_Y = Math.floor((y0 - ZONE_HALF) / STEP) * STEP + ZONE_HALF;
+      COLS = Math.ceil((x1 - ORIGIN_X) / STEP) * TILE_CELLS;
+      ROWS = Math.ceil((y1 - ORIGIN_Y) / STEP) * TILE_CELLS;
       W = COLS * CELL; H = ROWS * CELL;
     }
-    const nodeXY = n => [40 + n.map_x * (W - 80), 40 + n.map_y * (H - 80)];
+    const nodeXY = n => { const [x, y] = worldXY(n); return [x - ORIGIN_X, y - ORIGIN_Y]; };
 
     // owner[r * COLS + c] = index of the node holding that square, or -1.
     function cellOwners(pts) {
@@ -321,10 +337,10 @@
       for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
           const cx = (c + 0.5) * CELL, cy = (r + 0.5) * CELL;
-          let best = ZONE_RADIUS * ZONE_RADIUS;
+          let best = ZONE_HALF;   // square distance: a node's zone is a square tile
           pts.forEach(([x, y], i) => {
-            const d = (x - cx) ** 2 + (y - cy) ** 2;
-            if (d <= best) { best = d; owner[r * COLS + c] = i; }
+            const d = Math.max(Math.abs(x - cx), Math.abs(y - cy));
+            if (d < best) { best = d; owner[r * COLS + c] = i; }
           });
         }
       }
@@ -359,8 +375,8 @@
         }));
       }
       let minor = '', major = '';
-      for (let c = 0; c <= COLS; c++) { const d = `M${c * CELL} 0V${H}`; if (c % 4) minor += d; else major += d; }
-      for (let r = 0; r <= ROWS; r++) { const d = `M0 ${r * CELL}H${W}`; if (r % 4) minor += d; else major += d; }
+      for (let c = 0; c <= COLS; c++) { const d = `M${c * CELL} 0V${H}`; if (c % TILE_CELLS) minor += d; else major += d; }
+      for (let r = 0; r <= ROWS; r++) { const d = `M0 ${r * CELL}H${W}`; if (r % TILE_CELLS) minor += d; else major += d; }
       svg.append(svgEl('path', { d: minor, stroke: '#0f2236', 'stroke-width': 1, fill: 'none' }));
       svg.append(svgEl('path', { d: major, stroke: '#17405a', 'stroke-width': 1, fill: 'none' }));
       svg.append(svgEl('rect', { width: W, height: H, fill: 'none', stroke: '#1f5a78', 'stroke-width': 2 }));
@@ -465,8 +481,8 @@
         dotEls[i].setAttribute('transform', `translate(${x} ${y}) scale(${k})`);
         dotEls[i].lastChild.setAttribute('transform', `translate(0 ${ly}) scale(${ls})`);
       });
-      const spacing = Math.sqrt(W * H / Math.max(1, state.rows.length)) * cam.z;
-      svg.classList.toggle('far', spacing < 120);
+      // Names only when a tile is wide enough on screen for one ("Mossy Anvil C3D4" ~100 px).
+      svg.classList.toggle('far', STEP * cam.z < 130);
     }
 
     function flyTo(cx, cy, z) {
@@ -922,7 +938,21 @@
       const count = Math.min(300, Math.max(12, parseInt(new URLSearchParams(location.search).get('demo'), 10) || 12));
       let seed = 42;
       const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      // Blocks like the real map (layout.ts): every 9th node is physical, the 8
+      // after it its ring 1; blocks edge to edge, spiralling out from the first.
+      const ring1 = [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]];
+      // Each next block shares an edge with one already there (breadth first).
+      const blocks = [[0, 0]], seenB = new Set(['0,0']);
+      for (let q = 0; blocks.length * 9 < count; q++) {
+        for (const [di, dj] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
+          const b = [blocks[q][0] + di, blocks[q][1] + dj];
+          if (!seenB.has(b.join())) { seenB.add(b.join()); blocks.push(b); }
+        }
+      }
       const rows = Array.from({ length: count }, (_, i) => {
+        const [bi, bj] = blocks[Math.floor(i / 9)], k = i % 9;
+        const [cx, cy] = [bi * 3 * STEP, bj * 3 * STEP];
+        const [dx, dy] = k ? ring1[k - 1].map(v => v * STEP) : [0, 0];
         const f = i % 12 === 5 ? null : factions[Math.floor(rnd() * (count > 12 ? 7 : 4))];   // a few empty nodes
         const champ = f === null ? null : {
           name: names[i % names.length] + ' #' + String(1000 + Math.floor(rnd() * 9000)),
@@ -930,11 +960,11 @@
         };
         const maxHp = 5000 + i * 300;
         return {
-          node_id: i + 1, name: 'Demo Node ' + (i + 1), map_x: rnd(), map_y: rnd(), champion: champ,
+          node_id: i + 1, name: 'Demo Node ' + (i + 1), world_x: cx + dx, world_y: cy + dy, champion: champ,
           boss: { name: 'Stone Golem', level: 1 + (i % 4), hp: Math.floor(maxHp * rnd()), maxHp },
           top5: champ ? [{ name: champ.name, faction: f, class: champ.class, damage: 900 + i * 37 }] : [],
           rarest: null,
-          is_virtual: i % 4 === 3,   // a few virtual ones, to see how they look
+          is_virtual: k !== 0,
         };
       });
       // One pet leads two nodes, hits a third and found something, to try "Your pet" with.
@@ -953,12 +983,12 @@
     }
 
     function show(rows) {
-      const oldW = W;
+      const oldExtent = [W, H, ORIGIN_X, ORIGIN_Y].join();
       state.rows = rows;
-      sizeWorld(rows.length);
+      sizeWorld(rows);
       drawMap();
       applyState();
-      if (!cam.ready || W !== oldW) {
+      if (!cam.ready || [W, H, ORIGIN_X, ORIGIN_Y].join() !== oldExtent) {
         home(false);
         cam.ready = true;
         const n = selected();
@@ -976,7 +1006,7 @@
         return;
       }
       try {
-        const res = await fetch(SUPABASE_URL + '/rest/v1/node_state?select=node_id,name,map_x,map_y,champion,boss,top5,rarest,updated_day,is_virtual&order=name',
+        const res = await fetch(SUPABASE_URL + '/rest/v1/node_state?select=node_id,name,map_x,map_y,world_x,world_y,champion,boss,top5,rarest,updated_day,is_virtual&order=name',
                                 { headers: { apikey: SUPABASE_KEY }, cache: 'no-store' });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         show(await res.json());
