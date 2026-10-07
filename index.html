@@ -930,6 +930,48 @@
       renderPanel();
     }).observe($('stage'));
 
+    // The demo's layout: layout.ts's tree growth, compact (own random, so the
+    // demo pets keep their names). [{x, y, physical}] in the order they appear.
+    function demoTree(count) {
+      let seed = 7;
+      const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      const taken = new Map(), sides = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+      const around = [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]];
+      const k = (i, j) => i + ',' + j, phys = [], out = [];
+      const touch = (i, j) => sides.filter(([a, b]) => taken.has(k(i + a, j + b))).length;
+      const add = (i, j, physical) => { taken.set(k(i, j), 1); out.push({ x: i * STEP, y: j * STEP, physical }); if (physical) phys.push([i, j]); };
+      const pick = opts => { let r = rnd() * opts.reduce((t, o) => t + o.w, 0); for (const o of opts) if ((r -= o.w) < 0) return o.v; return opts.length ? opts[opts.length - 1].v : null; };
+      const edge = () => {
+        const m = new Map();
+        for (const key of taken.keys()) {
+          const [i, j] = key.split(',').map(Number);
+          for (const [a, b] of sides) {
+            const c = [i + a, j + b];
+            if (!taken.has(k(...c)) && !m.has(k(...c))) { const t = touch(...c); m.set(k(...c), { v: c, w: t === 1 ? 8 : t === 2 ? 2 : 1 }); }
+          }
+        }
+        return [...m.values()];
+      };
+      add(0, 0, true);
+      while (out.length < count) {
+        // Sprout around the newest physical node.
+        const [ci, cj] = phys[phys.length - 1];
+        let have = around.filter(([a, b]) => taken.has(k(ci + a, cj + b))).length;
+        while (have < 6 && out.length < count) {
+          const opts = around.map(([a, b]) => [ci + a, cj + b]).filter(c => !taken.has(k(...c)))
+            .map(c => ({ v: c, w: touch(...c) ? 1 + 2 * touch(...c) : 0 }));
+          const c = pick(opts); if (!c) break;
+          add(...c, false); have++;
+        }
+        if (phys.length % 3 === 0) for (let g = 0; g < 2 && out.length < count; g++) { const c = pick(edge()); if (c) add(...c, false); }
+        if (out.length >= count) break;
+        const ok = edge().filter(o => phys.every(p => Math.max(Math.abs(p[0] - o.v[0]), Math.abs(p[1] - o.v[1])) >= 2));
+        const c = pick(ok); if (!c) break;
+        add(...c, true);
+      }
+      return out;
+    }
+
     // ?demo: made-up nodes, to see the map without real ones. ?demo=60 for 60 of them.
     function demoRows() {
       const factions = Object.keys(FACTION_COLORS);
@@ -938,21 +980,13 @@
       const count = Math.min(300, Math.max(12, parseInt(new URLSearchParams(location.search).get('demo'), 10) || 12));
       let seed = 42;
       const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-      // Blocks like the real map (layout.ts): every 9th node is physical, the 8
-      // after it its ring 1; blocks edge to edge, spiralling out from the first.
-      const ring1 = [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]];
-      // Each next block shares an edge with one already there (breadth first).
-      const blocks = [[0, 0]], seenB = new Set(['0,0']);
-      for (let q = 0; blocks.length * 9 < count; q++) {
-        for (const [di, dj] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
-          const b = [blocks[q][0] + di, blocks[q][1] + dj];
-          if (!seenB.has(b.join())) { seenB.add(b.join()); blocks.push(b); }
-        }
-      }
+      // Grown like the real map (layout.ts, compact copy): each physical node
+      // attaches on the edge of the shape (2+ tiles from another), sprouts
+      // virtual nodes until 6 of its 8 neighbors are taken (shared ones
+      // count), and now and then the tips grow a little on their own.
+      const spots = demoTree(count);
       const rows = Array.from({ length: count }, (_, i) => {
-        const [bi, bj] = blocks[Math.floor(i / 9)], k = i % 9;
-        const [cx, cy] = [bi * 3 * STEP, bj * 3 * STEP];
-        const [dx, dy] = k ? ring1[k - 1].map(v => v * STEP) : [0, 0];
+        const [cx, cy] = [spots[i].x, spots[i].y], [dx, dy] = [0, 0], k = spots[i].physical ? 0 : 1;
         const f = i % 12 === 5 ? null : factions[Math.floor(rnd() * (count > 12 ? 7 : 4))];   // a few empty nodes
         const champ = f === null ? null : {
           name: names[i % names.length] + ' #' + String(1000 + Math.floor(rnd() * 9000)),
@@ -964,7 +998,7 @@
           boss: { name: 'Stone Golem', level: 1 + (i % 4), hp: Math.floor(maxHp * rnd()), maxHp },
           top5: champ ? [{ name: champ.name, faction: f, class: champ.class, damage: 900 + i * 37 }] : [],
           rarest: null,
-          is_virtual: k !== 0,
+          is_virtual: !spots[i].physical,
         };
       });
       // One pet leads two nodes, hits a third and found something, to try "Your pet" with.
