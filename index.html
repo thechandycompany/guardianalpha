@@ -122,10 +122,50 @@
 
     .foot { margin: 28px auto 0; max-width: 620px; text-align: center; font-size: 11px; line-height: 1.6; color: #55627a; }
 
+    /* ---- Top-level tabs: Leaderboard | Activity log ---- */
+    .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 14px; border-bottom: 1px solid var(--line); }
+    .tab {
+      background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 14px; margin-bottom: -1px;
+      cursor: pointer; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; font-size: 12px;
+    }
+    .tab:hover { color: var(--text); }
+    .tab[aria-selected="true"] { color: #fff; border-bottom-color: var(--accent); }
+    .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    /* ---- Activity log panel ---- */
+    .act-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 4px 0 6px; }
+    .gran { display: inline-flex; gap: 4px; }
+    .gran button {
+      background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 5px 12px;
+      cursor: pointer; color: var(--muted); font-size: 12px;
+    }
+    .gran button:hover { color: var(--text); border-color: var(--line2); }
+    .gran button[aria-pressed="true"] { color: #fff; border-color: var(--accent); }
+    .gran button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .act-cap { font-size: 11px; color: var(--muted); line-height: 1.6; margin: 2px 0 10px; }
+    .act-chart { width: 100%; height: auto; display: block; background: #05070d; border: 1px solid var(--line); border-radius: 6px; }
+    .act-bar { fill: var(--accent); }
+    .act-tick { stroke: var(--line2); stroke-width: 1; }
+    .act-chips { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 10px 0 4px; }
+    .act-note { font-size: 12px; color: var(--muted); padding: 8px 0; }
+    .act-note.err { color: #e0443e; }
+    .act-retry { background: var(--card); border: 1px solid var(--line2); border-radius: 4px; padding: 4px 12px; cursor: pointer; color: var(--text); margin-left: 8px; font-size: 12px; }
+    .act-retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .act-day-head { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: #fff; margin: 16px 0 4px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+    .act-day-head .n { color: var(--muted); font-weight: 400; }
+    .act-log { list-style: none; margin: 0; padding: 0; }
+    .act-log li { display: flex; gap: 10px; font-size: 13px; padding: 3px 0; color: var(--muted); }
+    .act-log li .t { color: #8fb8c6; white-space: nowrap; min-width: 72px; }
+    .act-log li .k { color: var(--text); white-space: nowrap; }
+    .act-log li .w { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+
     @media (max-width: 600px) {
       .page { padding: 16px 10px 32px; }
       h1 { font-size: 20px; letter-spacing: 4px; }
       .field { width: 100%; }
+      .tabs { overflow-x: auto; flex-wrap: nowrap; }
+      .act-log li { font-size: 12px; }
+      .act-log li .t { min-width: 60px; }
     }
   </style>
 </head>
@@ -134,6 +174,12 @@
     <h1>The Grid</h1>
     <div class="sub">Node leaderboards · closed alpha · <span id="status">loading…</span></div>
 
+    <div class="tabs" role="tablist" aria-label="views">
+      <button class="tab" id="tab-board" role="tab" aria-controls="panel-board" aria-selected="true" tabindex="0">Leaderboard</button>
+      <button class="tab" id="tab-activity" role="tab" aria-controls="panel-activity" aria-selected="false" tabindex="-1">Activity log</button>
+    </div>
+
+    <div id="panel-board" role="tabpanel" aria-labelledby="tab-board" tabindex="0">
     <div class="map-wrap" id="wrap">
       <svg id="map" aria-label="map of nodes"></svg>
       <div class="tip" id="tip"></div>
@@ -159,6 +205,23 @@
       Dashed markers are virtual nodes: pets reach them over home Wi-Fi. Every night from 12 to 5am
       Pacific, a virus takes over a few of them (green); beat its boss 3 times to cure one.
     </div>
+    </div><!-- /panel-board -->
+
+    <div id="panel-activity" role="tabpanel" aria-labelledby="tab-activity" tabindex="0" hidden>
+      <div class="act-controls">
+        <div class="gran" role="group" aria-label="granularity">
+          <button id="gran-day" aria-pressed="true">Day</button>
+          <button id="gran-week" aria-pressed="false">Week</button>
+        </div>
+        <button class="act-retry" id="actRefresh">Refresh</button>
+      </div>
+      <div class="act-cap" id="actWhy">Activity is recorded by day, so the smallest view is Day.</div>
+      <div class="act-cap" id="actCap"></div>
+      <div class="act-chips" id="actChips" hidden></div>
+      <div id="actChartWrap"></div>
+      <div class="act-note" id="actNote" hidden></div>
+      <div id="actLogWrap"></div>
+    </div><!-- /panel-activity -->
   </div>
 
   <script>
@@ -286,12 +349,20 @@
     // Filters live in the URL's #hash (bookmarkable, never sent to the server);
     // ?demo stays in the query.
     const DEMO = new URLSearchParams(location.search).has('demo');
-    const HASH = new URLSearchParams(location.hash.slice(1));
-    const state = { rows: [], faction: HASH.get('f'), pet: HASH.get('pet') || '', node: HASH.get('node') };
+    const SEARCH = new URLSearchParams(location.search);
+    // A bare "#activity" also opens the Activity tab, alongside the richer
+    // "#tab=activity&f=..." form the rest of the page uses.
+    const RAW_HASH = location.hash.slice(1);
+    const HASH = new URLSearchParams(RAW_HASH === 'activity' ? 'tab=activity' : RAW_HASH);
+    const state = {
+      rows: [], faction: HASH.get('f'), pet: HASH.get('pet') || '', node: HASH.get('node'),
+      tab: HASH.get('tab') === 'activity' ? 'activity' : 'board',
+    };
     let zoneEls = [], dotEls = [], cardEls = [];
 
     function writeHash() {
       const p = new URLSearchParams();
+      if (state.tab === 'activity') p.set('tab', 'activity');
       if (state.faction !== null) p.set('f', state.faction);
       if (state.pet.trim()) p.set('pet', state.pet.trim());
       if (state.node !== null) p.set('node', state.node);
@@ -712,6 +783,347 @@
 
     load();
     setInterval(load, 60 * 1000);
+
+    // ============================================================
+    // Activity log
+    // ============================================================
+
+    // --- pure bucketing (test boundary) ---
+    // All pure: they take explicit Dates/ms and never read globals or Date.now(),
+    // so a throwaway Node script can import and assert them. They bucket in the
+    // VIEWER'S LOCAL timezone, since the page shows local times.
+    const ACT = {
+      DAY_BUCKETS: 30,    // Day view (default): last 30 days
+      WEEK_BUCKETS: 12,   // Week view: last 12 Monday-start weeks
+    };
+    const pad2 = n => String(n).padStart(2, '0');
+
+    // Local midnight of the day containing d. Built from local Y/M/D fields so it
+    // lands on local midnight even across a DST change (no ms arithmetic).
+    function startOfLocalDay(d) {
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+    // Local midnight of the Monday on or before d. getDay(): 0=Sun..6=Sat.
+    function startOfLocalWeekMonday(d) {
+      const s = startOfLocalDay(d), back = (s.getDay() + 6) % 7;
+      return new Date(s.getFullYear(), s.getMonth(), s.getDate() - back);
+    }
+    // Add n days via local field math (DST-safe: stays at the same wall-clock time).
+    function addDays(d, n) {
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n, d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds());
+    }
+    // Stable bucket key for a Date at a granularity ('day' | 'week').
+    function bucketKeyFor(d, gran) {
+      const y = d.getFullYear(), m = pad2(d.getMonth() + 1), day = pad2(d.getDate());
+      if (gran === 'week') { const w = startOfLocalWeekMonday(d); return `${w.getFullYear()}-${pad2(w.getMonth() + 1)}-${pad2(w.getDate())}`; }
+      return `${y}-${m}-${day}`;
+    }
+    // The full ordered set of empty buckets for the window, OLDEST first, so
+    // empty buckets are present as zero rather than missing. Each bucket is
+    // {start, key, label}. nowMs is explicit for testability.
+    function buildBuckets(nowMs, gran) {
+      const now = new Date(nowMs), out = [];
+      if (gran === 'week') {
+        const end = startOfLocalWeekMonday(now);
+        for (let i = ACT.WEEK_BUCKETS - 1; i >= 0; i--) {
+          const s = addDays(end, -7 * i);
+          out.push({ start: s, key: bucketKeyFor(s, 'week'), label: s.toLocaleDateString([], { month: 'short', day: 'numeric' }) });
+        }
+      } else {
+        const end = startOfLocalDay(now);
+        for (let i = ACT.DAY_BUCKETS - 1; i >= 0; i--) {
+          const s = addDays(end, -i);
+          out.push({ start: s, key: bucketKeyFor(s, 'day'), label: s.toLocaleDateString([], { month: 'short', day: 'numeric' }) });
+        }
+      }
+      return out;
+    }
+    // Assign each event to its bucket key, dropping events outside the window.
+    // An event is {when: Date|ms, type, who, what}. Returns Map<key, Event[]>.
+    function bucketEvents(events, nowMs, gran) {
+      const buckets = buildBuckets(nowMs, gran);
+      const keys = new Set(buckets.map(b => b.key));
+      const map = new Map(buckets.map(b => [b.key, []]));
+      for (const e of events) {
+        const d = e.when instanceof Date ? e.when : new Date(e.when);
+        const k = bucketKeyFor(d, gran);
+        if (keys.has(k)) map.get(k).push(e);
+      }
+      return map;
+    }
+    // Zip the ordered empty buckets with counts (0 where no events).
+    function countsFromBuckets(buckets, grouped) {
+      return buckets.map(b => ({ label: b.label, key: b.key, count: (grouped.get(b.key) || []).length }));
+    }
+    // Group events by local day for the log list: newest day first, newest item
+    // first within a day.
+    function dayGroups(events) {
+      const by = new Map();
+      for (const e of events) {
+        const d = e.when instanceof Date ? e.when : new Date(e.when);
+        const key = bucketKeyFor(d, 'day');
+        if (!by.has(key)) by.set(key, { dayKey: key, start: startOfLocalDay(d), items: [] });
+        by.get(key).items.push(e);
+      }
+      const groups = [...by.values()];
+      groups.sort((a, b) => b.start - a.start);
+      for (const g of groups) {
+        g.items.sort((a, b) => {
+          const ta = (a.when instanceof Date ? a.when : new Date(a.when)).getTime();
+          const tb = (b.when instanceof Date ? b.when : new Date(b.when)).getTime();
+          return tb - ta;
+        });
+        g.count = g.items.length;
+        g.dayLabel = g.start.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+      }
+      return groups;
+    }
+    // --- end pure bucketing ---
+
+    // ---- Activity state + rendering ----
+    const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time';
+    const actState = { gran: 'day', events: null, loaded: false, loading: false, error: false, typeFilter: null, started: false };
+    const EVENT_LABELS = { sync: 'Board updated', champion: 'New champion', infected: 'Infected', cured: 'Cured' };
+
+    // Window caption per granularity. The source records activity by day, so the
+    // smallest view is Day (the note by the filter explains why Hour is absent).
+    function activityCaption() {
+      const win = actState.gran === 'week'
+        ? 'Week view shows the last 12 weeks, weeks start Monday.'
+        : 'Day view shows the last 30 days.';
+      return `${win} Times shown in your local timezone (${LOCAL_TZ}). Activity is recorded by day. Each item is a node board update.`;
+    }
+
+    function actNote(text, isErr, withRetry) {
+      const n = $('actNote');
+      n.className = 'act-note' + (isErr ? ' err' : '');
+      n.replaceChildren(el('span', null, text));
+      if (withRetry) {
+        const b = el('button', 'act-retry', 'Retry');
+        b.onclick = () => loadActivity(true);
+        n.append(b);
+      }
+      n.hidden = false;
+    }
+    const clearActNote = () => { $('actNote').hidden = true; };
+
+    function renderActivity() {
+      $('actCap').textContent = activityCaption();
+      if (actState.loading && !actState.events) { actNote('Loading activity…'); $('actChartWrap').replaceChildren(); $('actLogWrap').replaceChildren(); $('actChips').hidden = true; return; }
+      if (actState.error) { actNote("Couldn't load activity.", true, true); $('actChartWrap').replaceChildren(); $('actLogWrap').replaceChildren(); $('actChips').hidden = true; return; }
+      const all = actState.events || [];
+      // Event-type filter chips: only when more than one type is present.
+      const types = [...new Set(all.map(e => e.type))];
+      renderChips(types);
+      const events = actState.typeFilter ? all.filter(e => e.type === actState.typeFilter) : all;
+
+      if (!events.length) { actNote('No activity recorded yet.'); $('actChartWrap').replaceChildren(); $('actLogWrap').replaceChildren(); return; }
+      clearActNote();
+      renderChart(events);
+      renderLog(events);
+    }
+
+    function renderChips(types) {
+      const chips = $('actChips');
+      if (types.length <= 1) { chips.hidden = true; chips.replaceChildren(); actState.typeFilter = null; return; }
+      chips.hidden = false;
+      const mk = (key, label) => {
+        const on = actState.typeFilter === key;
+        const b = el('button', 'key' + (on ? ' on' : ''));
+        b.setAttribute('aria-pressed', String(on));
+        b.append(el('span', null, label));
+        b.onclick = () => { actState.typeFilter = on ? null : key; renderActivity(); };
+        return b;
+      };
+      const items = [mk(null, 'All')];
+      items[0].classList.toggle('on', !actState.typeFilter);
+      items[0].setAttribute('aria-pressed', String(!actState.typeFilter));
+      items[0].onclick = () => { actState.typeFilter = null; renderActivity(); };
+      for (const t of types) items.push(mk(t, EVENT_LABELS[t] || t));
+      chips.replaceChildren(...items);
+    }
+
+    function renderChart(events) {
+      const buckets = buildBuckets(Date.now(), actState.gran);
+      const grouped = bucketEvents(events, Date.now(), actState.gran);
+      const counts = countsFromBuckets(buckets, grouped);
+      const max = Math.max(1, ...counts.map(c => c.count));
+      const n = counts.length, VW = 720, VH = 160, pad = 18, gap = 2;
+      const bw = (VW - pad * 2) / n;
+      const svg = svgEl('svg', { class: 'act-chart', viewBox: `0 0 ${VW} ${VH}`, role: 'img', 'aria-label': 'Activity per ' + actState.gran });
+      const baseY = VH - pad;
+      counts.forEach((c, i) => {
+        const x = pad + i * bw, h = c.count ? Math.max(2, (VH - pad * 2) * c.count / max) : 0;
+        if (c.count) {
+          const r = svgEl('rect', { class: 'act-bar', x: (x + gap / 2).toFixed(1), y: (baseY - h).toFixed(1), width: Math.max(1, bw - gap).toFixed(1), height: h.toFixed(1), rx: 1 });
+          r.append(svgEl('title', {})); r.lastChild.textContent = `${c.label}: ${c.count} update${c.count === 1 ? '' : 's'}`;
+          svg.append(r);
+        } else {
+          const t = svgEl('line', { class: 'act-tick', x1: (x + bw / 2).toFixed(1), x2: (x + bw / 2).toFixed(1), y1: baseY, y2: baseY - 2 });
+          t.append(svgEl('title', {})); t.lastChild.textContent = `${c.label}: 0 updates`;
+          svg.append(t);
+        }
+      });
+      svg.append(svgEl('line', { class: 'act-tick', x1: pad, x2: VW - pad, y1: baseY, y2: baseY }));
+      $('actChartWrap').replaceChildren(svg);
+      return counts.filter(c => c.count > 0).length;
+    }
+
+    function renderLog(events) {
+      const groups = dayGroups(events);
+      const wrap = $('actLogWrap');
+      wrap.replaceChildren();
+      for (const g of groups) {
+        const head = el('div', 'act-day-head');
+        head.append(el('span', null, g.dayLabel), el('span', 'n', g.count + ' update' + (g.count === 1 ? '' : 's')));
+        const ul = el('ul', 'act-log');
+        for (const it of g.items) {
+          const li = el('li');
+          const when = it.when instanceof Date ? it.when : new Date(it.when);
+          const timeText = it.hasClock ? when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+            : when.toLocaleDateString([], { month: 'short', day: 'numeric' });
+          li.append(el('span', 't', timeText), el('span', 'k', EVENT_LABELS[it.type] || it.type), el('span', 'w', it.who));
+          ul.append(li);
+        }
+        wrap.append(head, ul);
+      }
+    }
+
+    // Build Event list from node_state rows (fallback source): one "Board
+    // updated" event per node at its updated_day (local midnight of that date).
+    function eventsFromNodeState(rows) {
+      const out = [];
+      for (const n of rows || []) {
+        if (!n.updated_day) continue;
+        const parts = String(n.updated_day).split('-').map(Number);
+        if (parts.length < 3) continue;
+        const when = new Date(parts[0], parts[1] - 1, parts[2]);   // local midnight of that date
+        const tags = [n.is_virtual ? 'virtual' : null, (n.boss && n.boss.virus) ? 'infected' : null].filter(Boolean);
+        const who = n.name + (tags.length ? ' (' + tags.join(', ') + ')' : '');
+        out.push({ when, type: 'sync', who, what: 'Board updated', hasClock: false });
+      }
+      return out;
+    }
+
+    // Map an activity_log row (option-b table, if it exists) to an Event.
+    function eventsFromActivityLog(rows) {
+      return (rows || []).map(r => {
+        const parts = String(r.day).split('-').map(Number);
+        const when = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1);
+        const who = r.node_name + (r.pet_name ? ' · ' + r.pet_name : '');
+        return { when, type: r.kind || 'sync', who, what: EVENT_LABELS[r.kind] || r.kind, hasClock: false };
+      });
+    }
+
+    // Demo activity: spread the demo nodes across the last two weeks so all
+    // three granularities are visibly populated (clearly made-up data).
+    function demoActivityEvents() {
+      const rows = state.rows.length ? state.rows : demoRows();
+      const now = Date.now(), out = [];
+      rows.forEach((n, i) => {
+        const daysBack = i % 14;   // spread across the last 14 days
+        const d = addDays(startOfLocalDay(new Date(now)), -daysBack);
+        const tags = [n.is_virtual ? 'virtual' : null, (n.boss && n.boss.virus) ? 'infected' : null].filter(Boolean);
+        out.push({ when: d, type: 'sync', who: n.name + (tags.length ? ' (' + tags.join(', ') + ')' : ''), what: 'Board updated', hasClock: false });
+      });
+      return out;
+    }
+
+    async function loadActivity(force) {
+      if (actState.loading) return;
+      // Demo-only flags for screenshotting the error/empty states without the network.
+      if (DEMO && SEARCH.has('activityerror')) { actState.loading = false; actState.loaded = true; actState.error = true; actState.events = null; renderActivity(); return; }
+      if (DEMO && SEARCH.has('activityempty')) { actState.loading = false; actState.loaded = true; actState.error = false; actState.events = []; renderActivity(); return; }
+      if (DEMO) { actState.events = demoActivityEvents(); actState.loaded = true; actState.error = false; renderActivity(); return; }
+
+      actState.loading = true; actState.error = false;
+      if (!actState.events) renderActivity();
+      try {
+        // Prefer the richer activity_log table if it exists and is readable.
+        let events = null;
+        try {
+          const r = await fetch(SUPABASE_URL + '/rest/v1/activity_log?select=day,kind,node_name,pet_name&order=day.desc&limit=2000',
+                                { headers: { apikey: SUPABASE_KEY }, cache: 'no-store' });
+          if (r.ok) { const rows = await r.json(); if (Array.isArray(rows) && rows.length) events = eventsFromActivityLog(rows); }
+          // 404 (no table) / 401 (not readable) / empty: fall through to node_state.
+        } catch (_) { /* ignore, fall back */ }
+
+        if (!events) {
+          const res = await fetch(SUPABASE_URL + '/rest/v1/node_state?select=node_id,name,updated_day,is_virtual,boss&order=updated_day.desc',
+                                  { headers: { apikey: SUPABASE_KEY }, cache: 'no-store' });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          events = eventsFromNodeState(await res.json());
+        }
+        actState.events = events; actState.loaded = true; actState.error = false;
+      } catch (err) {
+        actState.error = true;
+        if (!actState.events) actState.events = null;
+      } finally {
+        actState.loading = false;
+        renderActivity();
+      }
+    }
+
+    // ---- Tabs ----
+    const TAB_IDS = ['tab-board', 'tab-activity'];
+    function selectTab(which, focus) {
+      state.tab = which;
+      const activeId = which === 'activity' ? 'tab-activity' : 'tab-board';
+      for (const id of TAB_IDS) {
+        const t = $(id), on = id === activeId;
+        t.setAttribute('aria-selected', String(on));
+        t.tabIndex = on ? 0 : -1;
+        if (on && focus) t.focus();
+      }
+      $('panel-board').hidden = which !== 'board';
+      $('panel-activity').hidden = which !== 'activity';
+      writeHash();
+      if (which === 'activity') {
+        if (!actState.started) { actState.started = true; loadActivity(); }
+        else renderActivity();
+      } else {
+        // Returning to the map: markers may need re-placing after being hidden.
+        if (dotEls.length) placeMarkers();
+      }
+    }
+
+    function onTabKey(e) {
+      const i = TAB_IDS.indexOf(e.target.id);
+      if (i < 0) return;
+      let j = -1;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') j = (i + 1) % TAB_IDS.length;
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') j = (i + TAB_IDS.length - 1) % TAB_IDS.length;
+      else if (e.key === 'Home') j = 0;
+      else if (e.key === 'End') j = TAB_IDS.length - 1;
+      if (j < 0) return;
+      e.preventDefault();
+      selectTab(j === 1 ? 'activity' : 'board', true);
+    }
+
+    $('tab-board').onclick = () => selectTab('board', false);
+    $('tab-activity').onclick = () => selectTab('activity', false);
+    $('tab-board').addEventListener('keydown', onTabKey);
+    $('tab-activity').addEventListener('keydown', onTabKey);
+
+    function setGran(g) {
+      actState.gran = g;
+      $('gran-day').setAttribute('aria-pressed', String(g === 'day'));
+      $('gran-week').setAttribute('aria-pressed', String(g === 'week'));
+      renderActivity();
+    }
+    $('gran-day').onclick = () => setGran('day');
+    $('gran-week').onclick = () => setGran('week');
+    $('actRefresh').onclick = () => loadActivity(true);
+
+    // Poll the activity source on the same 60s cadence, but only while the
+    // Activity tab is visible. No aggressive polling.
+    setInterval(() => { if (state.tab === 'activity' && actState.started) loadActivity(); }, 60 * 1000);
+
+    // Demo-only: preset the granularity via ?gran=day|week, for screenshots.
+    if (DEMO && ['day', 'week'].includes(SEARCH.get('gran'))) setGran(SEARCH.get('gran'));
+
+    // Open the right tab on load (survives refresh via the URL hash).
+    selectTab(state.tab, false);
   </script>
 </body>
 </html>
