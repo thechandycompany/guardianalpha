@@ -157,6 +157,10 @@
     .act-log li { display: flex; gap: 10px; font-size: 13px; padding: 3px 0; color: var(--muted); }
     .act-log li .t { color: #8fb8c6; white-space: nowrap; min-width: 72px; }
     .act-log li .k { color: var(--text); white-space: nowrap; }
+    /* TEMP-VISIT-LOG (remove before GA): the admin visits view */
+    .act-admin { margin-top: 28px; border-top: 1px solid var(--line); padding-top: 10px; }
+    .act-admin h2 { font-size: 14px; margin: 0 0 4px; color: #fff; }
+    .act-admin input, .act-admin select { background: var(--card); border: 1px solid var(--line2); border-radius: 4px; color: var(--text); padding: 4px 8px; font-size: 13px; }
     .act-log li .w { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 
     @media (max-width: 600px) {
@@ -221,6 +225,22 @@
       <div id="actChartWrap"></div>
       <div class="act-note" id="actNote" hidden></div>
       <div id="actLogWrap"></div>
+
+      <!-- TEMP-VISIT-LOG (testing only, remove before GA): only with ?admin, and
+           rows only come back with the admin key (admin-visit-log function). -->
+      <div class="act-admin" id="adminWrap" hidden>
+        <h2>Visits (admin, temporary)</h2>
+        <div class="act-cap">Exact times of pet visits to virtual nodes, from the private visit log.
+          Needs the admin key; it's kept in this browser only. Physical nodes aren't logged.</div>
+        <div class="act-controls">
+          <input id="adminKey" type="password" placeholder="admin key" autocomplete="off" aria-label="admin key">
+          <select id="adminNode" aria-label="node"><option value="">All nodes</option></select>
+          <button class="act-retry" id="adminLoad">Load</button>
+          <button class="act-retry" id="adminForget">Forget key</button>
+        </div>
+        <div class="act-note" id="adminNote" hidden></div>
+        <div id="adminLogWrap"></div>
+      </div>
     </div><!-- /panel-activity -->
   </div>
 
@@ -1061,6 +1081,82 @@
         actState.loading = false;
         renderActivity();
       }
+    }
+
+    // ---- TEMP-VISIT-LOG (testing only, remove before GA): admin visit times ----
+    const ADMIN = SEARCH.has('admin');
+    const ADMIN_KEY_STORE = 'vpetAdminKey';
+    const adminState = { visits: [] };
+    function adminNote(text, isErr) {
+      const n = $('adminNote');
+      n.className = 'act-note' + (isErr ? ' err' : '');
+      n.textContent = text;
+      n.hidden = !text;
+    }
+    function renderAdmin() {
+      const node = $('adminNode').value;
+      const rows = node ? adminState.visits.filter(v => String(v.node_id) === node) : adminState.visits;
+      const wrap = $('adminLogWrap');
+      wrap.replaceChildren();
+      let day = null, ul = null;
+      for (const v of rows) {
+        const when = new Date(v.at);
+        const label = when.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+        if (label !== day) {
+          day = label;
+          const head = el('div', 'act-day-head');
+          head.append(el('span', null, label));
+          ul = el('ul', 'act-log');
+          wrap.append(head, ul);
+        }
+        const result = !v.ok ? 'refused' : v.won === true ? 'won' : v.won === false ? 'lost' : 'ok';
+        const li = el('li');
+        li.append(el('span', 't', when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })),
+                  el('span', 'k', v.node_name),
+                  el('span', 'w', `${v.pet_name || '(unknown pet)'} · ${v.action || '?'} · ${result}`));
+        ul.append(li);
+      }
+      if (!rows.length) adminNote(adminState.visits.length ? 'No visits to that node.' : 'No visits logged yet.');
+      else adminNote(`${rows.length} visit${rows.length === 1 ? '' : 's'} (newest first, times in ${LOCAL_TZ}).`);
+    }
+    async function loadAdmin() {
+      const key = $('adminKey').value.trim();
+      if (!key) { adminNote('Enter the admin key.', true); return; }
+      adminNote('Loading visits…');
+      try {
+        const res = await fetch(SUPABASE_URL + '/functions/v1/admin-visit-log?limit=1000', { headers: { 'x-admin-key': key }, cache: 'no-store' });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(res.status === 401 ? 'Wrong admin key.' : (out.error || 'HTTP ' + res.status));
+        localStorage.setItem(ADMIN_KEY_STORE, key);
+        adminState.visits = out.visits || [];
+        // The node picker: every node in the log, by name.
+        const sel = $('adminNode'), keep = sel.value;
+        const nodes = new Map(adminState.visits.map(v => [String(v.node_id), v.node_name]));
+        sel.replaceChildren(el('option', null, 'All nodes'), ...[...nodes].sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => {
+          const o = el('option', null, name);
+          o.value = id;
+          return o;
+        }));
+        sel.firstChild.value = '';
+        sel.value = nodes.has(keep) ? keep : '';
+        renderAdmin();
+      } catch (err) {
+        adminNote("Couldn't load visits: " + err.message, true);
+      }
+    }
+    if (ADMIN) {
+      $('adminWrap').hidden = false;
+      $('adminKey').value = localStorage.getItem(ADMIN_KEY_STORE) || '';
+      $('adminLoad').onclick = loadAdmin;
+      $('adminNode').onchange = renderAdmin;
+      $('adminForget').onclick = () => {
+        localStorage.removeItem(ADMIN_KEY_STORE);
+        $('adminKey').value = '';
+        adminState.visits = [];
+        $('adminLogWrap').replaceChildren();
+        adminNote('Key forgotten in this browser.');
+      };
+      if ($('adminKey').value) loadAdmin();
     }
 
     // ---- Tabs ----
