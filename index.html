@@ -203,7 +203,7 @@
       Pets show here only by their generated names. Nothing anyone types, no pictures, no locations,
       no accounts, and no cookies or tracking. Boards update when nodes report in.
       Dashed markers are virtual nodes: pets reach them over home Wi-Fi. Every night from 12 to 5am
-      Pacific, a virus takes over a few of them (green); beat its boss 3 times to cure one.
+      Pacific, a virus takes over a few of them (green); beat its boss once to cure one.
     </div>
     </div><!-- /panel-board -->
 
@@ -608,10 +608,9 @@
       box.append(h);
 
       if (infected(n)) {
-        const left = n.boss.virus.left;
         const from = n.boss.virus.from;
         box.append(el('div', 'champ virus-text', '☣ Infected' + (from ? ': took over from ' + from : '')),
-                   el('div', 'meta', `Nobody can claim it. Beat ${n.boss.name} ${left} more time${left === 1 ? '' : 's'} to cure it.`));
+                   el('div', 'meta', `Nobody can claim it. Beat ${n.boss.name} once to cure it.`));
       } else if (n.champion) {
         const c = n.champion, who = el('div', 'champ' + (inv.lead ? ' me' : ''), '⚔ ' + c.name);
         if (inv.lead) who.append(' ', el('span', 'tag you', 'You'));
@@ -734,9 +733,9 @@
       // A few nodes the night virus took (never the ones above).
       const viruses = ['Null Virus', 'Glitch Wraith', 'Death Byte'];
       rows.filter((n, i) => n.is_virtual && i > 6 && i % 5 === 1).slice(0, Math.max(1, Math.round(count * 0.08))).forEach((n, j) => {
-        // Sized like the real one (_shared/virus.ts): from the champion it replaced, regrown 1.5x per defeat.
-        const left = 3 - (j % 3), c = n.champion, level = c ? Math.min(20, 10 + Math.floor(c.level / 4)) : 10;
-        const maxHp = Math.round(Math.max(7751, c ? 4 * 60 * c.level : 0) * 1.5 ** (3 - left));
+        // Sized like the real one (_shared/virus.ts): from the champion it replaced; one defeat cures it.
+        const left = 1, c = n.champion, level = c ? Math.min(20, 10 + Math.floor(c.level / 4)) : 10;
+        const maxHp = Math.round(Math.max(7751, c ? 4 * 60 * c.level : 0));
         Object.assign(n, { champion: null, top5: [], rarest: null,
                            boss: { name: viruses[j % 3], level, hp: Math.floor(maxHp * rnd()), maxHp,
                                    virus: { left, from: n.champion ? n.champion.name : '' } } });
