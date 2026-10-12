@@ -104,6 +104,8 @@
     .card h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 15px; color: #fff; }
     .card h2 .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tag { font-size: 11px; font-weight: 400; color: #55627a; }
+    .super-text { color: #ffd84a; text-shadow: 0 0 8px rgba(255, 216, 74, 0.5); }
+    .card.super { border-color: rgba(255, 216, 74, 0.55); }
     .tag.you { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: #fff; border: 1px solid #fff; border-radius: 2px; padding: 0 5px; }
     .champ { color: #fff; }
     .meta { font-size: 12px; color: var(--muted); }
@@ -208,6 +210,10 @@
       no accounts, and no cookies or tracking. Boards update when nodes report in.
       Dashed markers are virtual nodes: pets reach them over home Wi-Fi. Every night from 12 to 5am
       Pacific, a virus takes over a few of them (green); beat its boss once to cure one.
+      Gold stars are super nodes: they open only to a faction whose champions hold all 8 nodes around one.
+      Their bosses are much tougher and their finds much rarer, and beating one infects all 8 nodes around it.
+      Stronger nodes (champion level plus boss level) hold more land and glow brighter, with up to 3 pips.
+      The marks on the land (peaks, trees, water, dunes, grass) come from each node's name.
     </div>
     </div><!-- /panel-board -->
 
@@ -259,6 +265,20 @@
     // night virus holds (boss.virus; supabase/functions/_shared/virus.ts).
     const OPEN = 'open', UNALIGNED = '_', INFECTED = 'virus', VIRUS_COLOR = '#39ff14';
     const infected = n => !!(n.boss && n.boss.virus);
+    // A super node (is_super; supabase/functions/_shared/super.ts) opens only to
+    // the faction whose champions hold all 8 nodes around it: ringHolder().
+    const SUPER_COLOR = '#ffd84a';
+    function superHolder(n) {
+      const [x, y] = worldXY(n);
+      let holder = '';
+      for (const [di, dj] of [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]]) {
+        const m = state.rows.find(r => r.world_x === x + di * STEP && r.world_y === y + dj * STEP);
+        const f = m && !infected(m) && m.champion ? m.champion.faction : '';
+        if (!f || (holder && f !== holder)) return '';
+        holder = f;
+      }
+      return holder;
+    }
     const fkey = n => infected(n) ? INFECTED : !n.champion ? OPEN : (n.champion.faction || UNALIGNED);
     const kcolor = k => k === INFECTED ? VIRUS_COLOR : k === OPEN ? '#667' : (FACTION_COLORS[k] || '#777');
     const kname = k => k === INFECTED ? 'Infected' : k === OPEN ? 'Open' : k === UNALIGNED ? 'Unaligned' : k;
@@ -310,20 +330,103 @@
     }
     const nodeXY = n => { const [x, y] = worldXY(n); return [x - ORIGIN_X, y - ORIGIN_Y]; };
 
-    // owner[r * COLS + c] = index of the node holding that square, or -1.
-    function cellOwners(pts) {
-      const owner = new Array(COLS * ROWS).fill(-1);
-      for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-          const cx = (c + 0.5) * CELL, cy = (r + 0.5) * CELL;
-          let best = ZONE_HALF;   // square distance: a node's zone is a square tile
-          pts.forEach(([x, y], i) => {
-            const d = Math.max(Math.abs(x - cx), Math.abs(y - cy));
-            if (d < best) { best = d; owner[r * COLS + c] = i; }
+    // ---- Land ----
+    // The tiles are drawn as natural land, not squares: each node holds the
+    // ground nearest a seed jittered off its spot (from its ID), stronger
+    // nodes reach further (power, below), and the coast wanders with a noise
+    // field. A displacement filter (drawDefs) makes every border wavy.
+    const ZCELL = CELL / 2;   // land is worked out on a finer grid than the backdrop
+    const hash2 = (x, y, k = 0) => {
+      let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(k | 0, 1274126177);
+      h = Math.imul(h ^ (h >>> 13), 1274126177);
+      return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+    };
+    // Smooth value noise, 0..1.
+    function noise(x, y, k) {
+      const xi = Math.floor(x), yi = Math.floor(y), u = x - xi, v = y - yi;
+      const su = u * u * (3 - 2 * u), sv = v * v * (3 - 2 * v);
+      const a = hash2(xi, yi, k), b = hash2(xi + 1, yi, k), c = hash2(xi, yi + 1, k), d = hash2(xi + 1, yi + 1, k);
+      return a + (b - a) * su + (c - a) * sv + (a - b - c + d) * su * sv;
+    }
+    const fbm = (x, y) => (noise(x / 70, y / 70, 1) * 2 + noise(x / 28, y / 28, 2)) / 3;
+
+    // A node's power, 0..1: its champion's level plus 3x its boss's level,
+    // against the strongest node on the map (super nodes count as the top).
+    // Bigger land, a bigger, brighter marker and more pips for a stronger node.
+    const rawPower = n => (n.champion && !infected(n) ? n.champion.level || 0 : 0) + 3 * ((n.boss && n.boss.level) || 1);
+    let powers = [];
+    function computePowers(rows) {
+      const top = Math.max(1, ...rows.map(rawPower));
+      powers = rows.map(n => n.is_super ? 1 : rawPower(n) / top);
+    }
+    const pips = t => t >= 0.9 ? 3 : t >= 0.6 ? 2 : t >= 0.3 ? 1 : 0;
+
+    // owner[r * ZCOLS + c] = index of the node holding that bit of land, or -1 (sea).
+    let ZCOLS = 0, ZROWS = 0;
+    function cellOwners(pts, rows) {
+      ZCOLS = COLS * 2; ZROWS = ROWS * 2;
+      const seeds = rows.map((n, i) => {
+        const id = Number(n.node_id) || i;
+        return { x: pts[i][0] + (hash2(id, 1) - 0.5) * 70, y: pts[i][1] + (hash2(id, 2) - 0.5) * 70,
+                 bonus: 40 * powers[i] + (n.is_super ? 15 : 0) };
+      });
+      const owner = new Array(ZCOLS * ZROWS).fill(-1);
+      for (let r = 0; r < ZROWS; r++) {
+        for (let c = 0; c < ZCOLS; c++) {
+          const cx = (c + 0.5) * ZCELL, cy = (r + 0.5) * ZCELL;
+          // Land if some node is close enough; the coast wanders 100..140 out.
+          const reach = 100 + 40 * fbm(cx + ORIGIN_X, cy + ORIGIN_Y);
+          let near = Infinity;
+          for (const [x, y] of pts) near = Math.min(near, Math.hypot(x - cx, y - cy));
+          if (near > reach) continue;
+          // Borders between nodes bend: the spot is warped by noise before the nearest seed is picked.
+          const wx = cx + (fbm(cx + ORIGIN_X + 500, cy + ORIGIN_Y) - 0.5) * 120;
+          const wy = cy + (fbm(cx + ORIGIN_X, cy + ORIGIN_Y + 500) - 0.5) * 120;
+          let best = Infinity;
+          seeds.forEach((sd, i) => {
+            const d = Math.hypot(sd.x - wx, sd.y - wy) - sd.bonus;
+            if (d < best) { best = d; owner[r * ZCOLS + c] = i; }
           });
         }
       }
       return owner;
+    }
+
+    // What a node's land looks like, from the noun in its name.
+    const TERRAIN = {
+      mountain: ['Peak', 'Summit', 'Ridge', 'Crag', 'Ledge', 'Rock', 'Hill', 'Quarry', 'Cavern', 'Spire', 'Anvil', 'Forge'],
+      water: ['Harbor', 'River', 'Brook', 'Creek', 'Pond', 'Reef', 'Shore', 'Fjord', 'Marsh', 'Pier', 'Wharf', 'Island', 'Spring', 'Bridge'],
+      forest: ['Grove', 'Willow', 'Oak', 'Acorn', 'Fern', 'Thicket', 'Bramble', 'Orchard', 'Glade', 'Garden', 'Fox', 'Badger', 'Owl', 'Raven', 'Wren', 'Otter', 'Heron', 'Falcon', 'Nest', 'Burrow'],
+      desert: ['Dune', 'Mesa', 'Canyon', 'Arch', 'Comet'],
+    };
+    const terrainOf = n => {
+      const noun = String(n.name || '').split(' ')[1] || '';
+      for (const [t, list] of Object.entries(TERRAIN)) if (list.includes(noun)) return t;
+      return 'plains';
+    };
+    // One terrain mark, about 20 units across, drawn around (0, 0).
+    const TERRAIN_MARK = {
+      mountain: 'M-10 6L-3 -7L1 -1L4 -5L10 6ZM-5 -3L-3 -7L-1 -3',
+      forest: 'M-6 4L-3 -6L0 4ZM-3 4V7M2 5L5 -4L8 5ZM5 5V8',
+      water: 'M-9 -2q2.25 -3 4.5 0t4.5 0t4.5 0t4.5 0M-7 4q2.25 -3 4.5 0t4.5 0t4.5 0',
+      desert: 'M-10 5Q-5 -3 0 5M-2 5Q4 -5 10 5',
+      plains: 'M-7 5l2 -7l2 7M-1 5l2 -9l2 9M5 5l2 -6l2 6',
+    };
+    function terrainMarks(g, n, i, owner, col) {
+      const mine = [];
+      const [px, py] = nodeXY(n);
+      for (let r = 0; r < ZROWS; r += 3) for (let c = 0; c < ZCOLS; c += 3) {
+        if (owner[r * ZCOLS + c] !== i) continue;
+        const x = (c + 0.5) * ZCELL, y = (r + 0.5) * ZCELL;
+        if (Math.hypot(x - px, y - py) > 34) mine.push([x, y]);   // keep clear of the marker
+      }
+      const id = Number(n.node_id) || i, want = Math.min(mine.length, 3 + Math.floor(hash2(id, 3) * 3));
+      const d = TERRAIN_MARK[terrainOf(n)];
+      for (let k = 0; k < want; k++) {
+        const [x, y] = mine[Math.floor(hash2(id, 10 + k) * mine.length)];
+        g.append(svgEl('path', { d, transform: `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${(0.8 + hash2(id, 20 + k) * 0.5).toFixed(2)})`,
+                                 fill: 'none', stroke: col, 'stroke-width': 1.4, 'stroke-opacity': 0.75, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', class: 'terrain' }));
+      }
     }
 
     // Glow filter and vignette.
@@ -342,7 +445,14 @@
       const merge2 = svgEl('feMerge');
       merge2.append(svgEl('feMergeNode', { in: 'b' }), svgEl('feMergeNode', { in: 'b' }), svgEl('feMergeNode', { in: 'SourceGraphic' }));
       glow2.append(merge2);
-      defs.append(glow, glow2, vig);
+      // Wavy borders: one noise field over the whole map, so neighbors' shared
+      // borders bend together.
+      const wob = svgEl('filter', { id: 'organic', filterUnits: 'userSpaceOnUse', x: 0, y: 0, width: W, height: H });
+      wob.append(svgEl('feTurbulence', { type: 'fractalNoise', baseFrequency: 0.018, numOctaves: 2, seed: 4, result: 't' }),
+                 svgEl('feDisplacementMap', { in: 'SourceGraphic', in2: 't', scale: 22, xChannelSelector: 'R', yChannelSelector: 'G' }));
+      const halo = svgEl('filter', { id: 'halo', x: '-100%', y: '-100%', width: '300%', height: '300%' });
+      halo.append(svgEl('feGaussianBlur', { stdDeviation: 9 }));
+      defs.append(glow, glow2, vig, wob, halo);
       svg.append(defs);
     }
 
@@ -361,8 +471,15 @@
       let minor = '', major = '';
       for (let c = 0; c <= COLS; c++) { const d = `M${c * CELL} 0V${H}`; if (c % TILE_CELLS) minor += d; else major += d; }
       for (let r = 0; r <= ROWS; r++) { const d = `M0 ${r * CELL}H${W}`; if (r % TILE_CELLS) minor += d; else major += d; }
-      svg.append(svgEl('path', { d: minor, stroke: '#0f2236', 'stroke-width': 1, fill: 'none' }));
-      svg.append(svgEl('path', { d: major, stroke: '#17405a', 'stroke-width': 1, fill: 'none' }));
+      svg.append(svgEl('path', { d: minor, stroke: '#0c1a2a', 'stroke-width': 1, fill: 'none' }));
+      svg.append(svgEl('path', { d: major, stroke: '#112c40', 'stroke-width': 1, fill: 'none' }));
+      // The sea: faint ripples (land is drawn over them).
+      let waves = '';
+      for (let i = 0; i < Math.round(160 * W * H / 600000); i++) {
+        const x = rnd() * W, y = rnd() * H;
+        waves += `M${x.toFixed(0)} ${y.toFixed(0)}q3 -3 6 0t6 0t6 0`;
+      }
+      svg.append(svgEl('path', { d: waves, stroke: '#163a55', 'stroke-width': 1.2, fill: 'none', 'stroke-linecap': 'round' }));
     }
 
     // ---- State ----
@@ -426,21 +543,23 @@
       drawDefs(svg);
       drawGrid(svg);
       const rows = state.rows, pts = rows.map(nodeXY);
-      const owner = cellOwners(pts);
+      computePowers(rows);
+      const owner = cellOwners(pts, rows);
 
-      // Zones: lit squares with a bright edge where one zone ends.
-      const at = (c, r) => (c < 0 || r < 0 || c >= COLS || r >= ROWS) ? -1 : owner[r * COLS + c];
-      const fill = rows.map(() => ''), edge = rows.map(() => '');
-      for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
+      // Land: solid ground per node, a bright edge where one node's land ends.
+      const at = (c, r) => (c < 0 || r < 0 || c >= ZCOLS || r >= ZROWS) ? -1 : owner[r * ZCOLS + c];
+      const fill = rows.map(() => ''), edge = rows.map(() => ''), coast = rows.map(() => '');
+      for (let r = 0; r < ZROWS; r++) {
+        for (let c = 0; c < ZCOLS; c++) {
           const i = at(c, r);
           if (i < 0) continue;
-          const x = c * CELL, y = r * CELL;
-          fill[i] += `M${x + 2} ${y + 2}h${CELL - 4}v${CELL - 4}h${4 - CELL}z`;
-          if (at(c, r - 1) !== i) edge[i] += `M${x} ${y}h${CELL}`;
-          if (at(c, r + 1) !== i) edge[i] += `M${x} ${y + CELL}h${CELL}`;
-          if (at(c - 1, r) !== i) edge[i] += `M${x} ${y}v${CELL}`;
-          if (at(c + 1, r) !== i) edge[i] += `M${x + CELL} ${y}v${CELL}`;
+          const x = c * ZCELL, y = r * ZCELL;
+          fill[i] += `M${x} ${y}h${ZCELL}v${ZCELL}h${-ZCELL}z`;
+          const side = (o, d) => { if (o !== i) (o < 0 ? coast : edge)[i] += d; };
+          side(at(c, r - 1), `M${x} ${y}h${ZCELL}`);
+          side(at(c, r + 1), `M${x} ${y + ZCELL}h${ZCELL}`);
+          side(at(c - 1, r), `M${x} ${y}v${ZCELL}`);
+          side(at(c + 1, r), `M${x + ZCELL} ${y}v${ZCELL}`);
         }
       }
       const hover = (g, n) => {
@@ -448,36 +567,50 @@
         g.addEventListener('mouseleave', hideTip);
         g.addEventListener('click', e => { e.stopPropagation(); select(n.node_id, true); });
       };
+      const land = svgEl('g', { filter: 'url(#organic)' });
       zoneEls = rows.map((n, i) => {
-        const k = fkey(n), col = kcolor(k), open = k === OPEN;
-        const g = svgEl('g', { class: 'zone' + (k === INFECTED ? ' virus' : '') });
-        // The fill is a solid square under the lit cells, so the whole tile is clickable.
-        const [x, y] = pts[i];
-        g.append(svgEl('rect', { x: x - ZONE_HALF, y: y - ZONE_HALF, width: STEP, height: STEP, fill: 'transparent' }));
-        const sick = k === INFECTED;
-        g.append(svgEl('path', { d: fill[i], fill: col, 'fill-opacity': open ? 0.06 : sick ? 0.4 : 0.16 }));
+        const k = fkey(n), col = kcolor(k), open = k === OPEN, sick = k === INFECTED, t = powers[i];
+        const g = svgEl('g', { class: 'zone' + (sick ? ' virus' : '') });
+        // Ground: a dark earth base, then the faction's color (stronger = richer).
+        g.append(svgEl('path', { d: fill[i], fill: '#0d1a22', 'shape-rendering': 'crispEdges' }));
+        g.append(svgEl('path', { d: fill[i], fill: col, 'shape-rendering': 'crispEdges',
+                                 'fill-opacity': open ? 0.07 : sick ? 0.4 : 0.12 + 0.16 * t }));
+        terrainMarks(g, n, i, owner, open ? '#7d93a8' : col);
+        g.append(svgEl('path', { class: 'edge', d: edge[i], fill: 'none', stroke: col, 'stroke-width': 1.5,
+                                 'stroke-opacity': open ? 0.35 : 0.6, 'stroke-linecap': 'round' }));
         g.append(svgEl('path', {
-          class: 'edge', d: edge[i], fill: 'none', stroke: col, 'stroke-width': sick ? 3 : 2, 'stroke-linecap': 'square',
-          'stroke-opacity': open ? 0.6 : 0.9, 'stroke-dasharray': open ? '5 5' : 'none', filter: open ? 'none' : sick ? 'url(#glow2)' : 'url(#glow)',
+          class: 'edge', d: coast[i], fill: 'none', stroke: open ? '#3d6a86' : col, 'stroke-width': sick ? 3 : 2.5, 'stroke-linecap': 'round',
+          'stroke-opacity': 0.9, filter: sick ? 'url(#glow2)' : 'url(#glow)',
         }));
         hover(g, n);
-        svg.append(g);
+        land.append(g);
         return g;
       });
-      // Infected tiles on top, so their glowing edges aren't covered by the neighbors'.
-      zoneEls.forEach(g => { if (g.classList.contains('virus')) svg.append(g); });
+      svg.append(land);
+      // Infected land on top, so its glowing edges aren't covered by the neighbors'.
+      zoneEls.forEach(g => { if (g.classList.contains('virus')) land.append(g); });
 
       // Nodes: pulsing diamonds drawn around (0, 0) and placed (and scaled)
       // by placeMarkers; a white outer ring marks the ones your pet leads.
       const diamond = r => `0,${-r} ${r},0 0,${r} ${-r},0`;
-      dotEls = rows.map(n => {
-        const k = fkey(n), col = kcolor(k);
+      dotEls = rows.map((n, i) => {
+        const k = fkey(n), col = kcolor(k), t = powers[i];
         const g = svgEl('g', { class: 'node-dot', tabindex: 0, role: 'button', 'aria-label': n.name });
+        // Power: a soft halo that grows and brightens, and up to 3 pips above.
+        if (k !== OPEN || n.is_super) {
+          g.append(svgEl('circle', { class: 'halo', r: 12 + 20 * t, fill: n.is_super ? SUPER_COLOR : col,
+                                     'fill-opacity': 0.12 + 0.4 * t, filter: 'url(#halo)' }));
+        }
+        for (let p = 0, np = pips(t); p < np; p++) {
+          g.append(svgEl('polygon', { points: `${(p - (np - 1) / 2) * 8},-25 ${(p - (np - 1) / 2) * 8 + 3},-21 ${(p - (np - 1) / 2) * 8 - 3},-21`,
+                                      fill: n.is_super ? SUPER_COLOR : '#fff', 'fill-opacity': 0.85 }));
+        }
         g.append(svgEl('polygon', { class: 'mine-ring', points: diamond(25), fill: 'none', stroke: '#fff', 'stroke-width': 1.5, filter: 'url(#glow)' }));
         // A virtual node (lives online; pets reach it over home Wi-Fi): a dashed ring.
-        g.append(svgEl('polygon', { class: 'ring', points: diamond(16), fill: 'none', stroke: col, 'stroke-width': 2, filter: 'url(#glow)',
+        g.append(svgEl('polygon', { class: 'ring', points: diamond(16), fill: 'none', stroke: col, 'stroke-width': 1.5 + 1.5 * t, filter: t > 0.7 ? 'url(#glow2)' : 'url(#glow)',
                                     'stroke-dasharray': n.is_virtual ? '4 3' : 'none' }));
         if (k === INFECTED) g.append(virusIcon());
+        else if (n.is_super) g.append(starIcon(superHolder(n)));
         else g.append(svgEl('polygon', { points: diamond(7), fill: k === OPEN ? '#333' : col, filter: 'url(#glow)' }));
         const label = svgEl('text', {
           y: 14, 'text-anchor': 'middle', fill: '#cfefff',
@@ -492,6 +625,16 @@
         return g;
       });
       placeMarkers();
+    }
+
+    // A super node's center: a gold star, hollow while it's locked.
+    function starIcon(open) {
+      let pts = '';
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 4.5 : 11;
+        pts += `${(r * Math.cos(a)).toFixed(2)},${(r * Math.sin(a)).toFixed(2)} `;
+      }
+      return svgEl('polygon', { points: pts.trim(), fill: open ? SUPER_COLOR : '#05070d', stroke: SUPER_COLOR, 'stroke-width': 1.6, filter: 'url(#glow)' });
     }
 
     // An infected node's center: a virus (a core with 8 knobbed spikes), in place of the diamond.
@@ -515,8 +658,9 @@
       const z = mapZ(), k = Math.min(3, Math.max(1, 0.85 / z)), ls = (12 / z) / (14 * k), ly = 16 + 5 / (k * z);
       state.rows.forEach((n, i) => {
         const [x, y] = nodeXY(n);
-        dotEls[i].setAttribute('transform', `translate(${x} ${y}) scale(${k})`);
-        dotEls[i].lastChild.setAttribute('transform', `translate(0 ${ly}) scale(${ls})`);
+        const f = 0.8 + 0.5 * (powers[i] || 0);   // stronger nodes: bigger markers (labels stay the same size)
+        dotEls[i].setAttribute('transform', `translate(${x} ${y}) scale(${k * f})`);
+        dotEls[i].lastChild.setAttribute('transform', `translate(0 ${ly}) scale(${ls / f})`);
       });
       // Names only when a tile is wide enough on screen for one ("Mossy Anvil C3D4" ~100 px).
       $('map').classList.toggle('far', STEP * z < 130);
@@ -530,6 +674,8 @@
         el('b', null, n.name),
         el('div', null, infected(n) ? 'Infected by ' + b.name : n.champion ? n.champion.name + ' · ' + kname(fkey(n)) : 'Open: no champion'),
         el('div', 'muted', (b.name || 'Boss') + ' ' + pct(b.hp || 0, b.maxHp || 0) + ' HP'));
+      tip.append(el('div', 'muted', 'Strength ' + ['▱▱▱', '▰▱▱', '▰▰▱', '▰▰▰'][pips(powers[i] || 0)] + ' · ' + terrainOf(n)));
+      if (n.is_super) tip.append(el('div', 'super-text', superHolder(n) ? '★ Open to ' + superHolder(n) : '★ Super node · locked'));
       const below = sy - off < 70;
       tip.style.left = Math.min(Math.max(sx, 110), w.width - 110) + 'px';
       tip.style.top = (below ? sy + off : sy - off) + 'px';
@@ -618,7 +764,7 @@
 
     function card(n) {
       const inv = involvement(n), k = fkey(n), b = n.boss || {};
-      const box = el('div', 'card' + (infected(n) ? ' virus' : '') + (String(n.node_id) === state.node ? ' sel' : ''));
+      const box = el('div', 'card' + (infected(n) ? ' virus' : '') + (n.is_super ? ' super' : '') + (String(n.node_id) === state.node ? ' sel' : ''));
       box.style.setProperty('--c', kcolor(k));
       box.onclick = () => select(n.node_id, false);
 
@@ -626,6 +772,12 @@
       h.append(swatch(k), el('span', 'nm', n.name));
       if (n.is_virtual) h.append(el('span', 'tag', 'virtual'));
       box.append(h);
+      if (n.is_super) {
+        const holder = superHolder(n);
+        box.append(el('div', 'meta super-text', holder
+          ? '★ Super node · open to ' + holder
+          : '★ Super node · locked: one faction must hold all 8 nodes around it'));
+      }
 
       if (infected(n)) {
         const from = n.boss.virus.from;
@@ -790,7 +942,7 @@
         return;
       }
       try {
-        const res = await fetch(SUPABASE_URL + '/rest/v1/node_state?select=node_id,name,map_x,map_y,world_x,world_y,champion,boss,top5,rarest,updated_day,is_virtual&order=name',
+        const res = await fetch(SUPABASE_URL + '/rest/v1/node_state?select=node_id,name,map_x,map_y,world_x,world_y,champion,boss,top5,rarest,updated_day,is_virtual,is_super&order=name',
                                 { headers: { apikey: SUPABASE_KEY }, cache: 'no-store' });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         show(await res.json());
@@ -1017,7 +1169,7 @@
         const parts = String(n.updated_day).split('-').map(Number);
         if (parts.length < 3) continue;
         const when = new Date(parts[0], parts[1] - 1, parts[2]);   // local midnight of that date
-        const tags = [n.is_virtual ? 'virtual' : null, (n.boss && n.boss.virus) ? 'infected' : null].filter(Boolean);
+        const tags = [n.is_super ? 'super' : n.is_virtual ? 'virtual' : null, (n.boss && n.boss.virus) ? 'infected' : null].filter(Boolean);
         const who = n.name + (tags.length ? ' (' + tags.join(', ') + ')' : '');
         out.push({ when, type: 'sync', who, what: 'Board updated', hasClock: false });
       }
@@ -1042,7 +1194,7 @@
       rows.forEach((n, i) => {
         const daysBack = i % 14;   // spread across the last 14 days
         const d = addDays(startOfLocalDay(new Date(now)), -daysBack);
-        const tags = [n.is_virtual ? 'virtual' : null, (n.boss && n.boss.virus) ? 'infected' : null].filter(Boolean);
+        const tags = [n.is_super ? 'super' : n.is_virtual ? 'virtual' : null, (n.boss && n.boss.virus) ? 'infected' : null].filter(Boolean);
         out.push({ when: d, type: 'sync', who: n.name + (tags.length ? ' (' + tags.join(', ') + ')' : ''), what: 'Board updated', hasClock: false });
       });
       return out;
@@ -1068,7 +1220,7 @@
         } catch (_) { /* ignore, fall back */ }
 
         if (!events) {
-          const res = await fetch(SUPABASE_URL + '/rest/v1/node_state?select=node_id,name,updated_day,is_virtual,boss&order=updated_day.desc',
+          const res = await fetch(SUPABASE_URL + '/rest/v1/node_state?select=node_id,name,updated_day,is_virtual,is_super,boss&order=updated_day.desc',
                                   { headers: { apikey: SUPABASE_KEY }, cache: 'no-store' });
           if (!res.ok) throw new Error('HTTP ' + res.status);
           events = eventsFromNodeState(await res.json());
