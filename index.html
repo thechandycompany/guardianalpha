@@ -115,7 +115,7 @@
     .ringbar i { flex: 1; height: 7px; border-radius: 2px; background: #1d2433; }
     .super-frame { stroke-dasharray: 10 7; animation: march 1.6s linear infinite; }
     @keyframes march { to { stroke-dashoffset: -17; } }
-    .node-dot .crown-ring { animation: spin 18s linear infinite; }
+    .node-dot .gate-ring { animation: spin 18s linear infinite; }
     .tag.you { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: #fff; border: 1px solid #fff; border-radius: 2px; padding: 0 5px; }
     .champ { color: #fff; }
     .meta { font-size: 12px; color: var(--muted); }
@@ -220,7 +220,7 @@
       no accounts, and no cookies or tracking. Boards update when nodes report in.
       Dashed markers are virtual nodes: pets reach them over home Wi-Fi. Every night from 12 to 5am
       Pacific, a virus takes over a few of them (green); beat its boss once to cure one.
-      Gold stars in marching gold frames are super nodes (North, East, South and West Crown), with how much of the ring a faction holds. They open only to a faction whose champions hold all 8 nodes around one.
+      Gold stars in marching gold frames are super nodes (the North, East, South and West Gateways), with how much of the ring a faction holds. They open only to a faction whose champions hold all 8 nodes around one.
       Their bosses are much tougher and their finds much rarer, and beating one infects all 8 nodes around it.
       Stronger nodes (champion level plus boss level) have brighter tiles and bigger, brighter markers, with up to 3 pips.
       The marks on the tiles (peaks, trees, water, dunes, grass) come from each node's name.
@@ -592,7 +592,7 @@
                                      'fill-opacity': 0.12 + 0.4 * t, filter: 'url(#halo)' }));
         }
         if (n.is_super) {
-          g.append(svgEl('circle', { class: 'crown-ring', r: 24, fill: 'none', stroke: SUPER_COLOR, 'stroke-width': 1.5, 'stroke-dasharray': '3 4' }));
+          g.append(svgEl('circle', { class: 'gate-ring', r: 24, fill: 'none', stroke: SUPER_COLOR, 'stroke-width': 1.5, 'stroke-dasharray': '3 4' }));
           g.append(svgEl('path', { d: 'M-9 -24L-9 -33L-4.5 -28L0 -35L4.5 -28L9 -33L9 -24Z', fill: SUPER_COLOR, filter: 'url(#glow)' }));
         }
         for (let p = 0, np = n.is_super ? 0 : pips(t); p < np; p++) {
