@@ -59,6 +59,48 @@
     .virus-text { color: #39ff14; text-shadow: 0 0 8px rgba(57, 255, 20, 0.6); }
     .card.virus { background: linear-gradient(180deg, rgba(57, 255, 20, 0.08), var(--card) 60%); border-color: rgba(57, 255, 20, 0.45); }
 
+    /* ---- Flash announcements: top right of the map when a node changes ---- */
+    .toasts {
+      position: absolute; top: 10px; right: 10px; z-index: 3; width: min(320px, calc(100% - 20px));
+      display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+    }
+    .toast {
+      --c: var(--accent); position: relative; overflow: hidden; pointer-events: auto; cursor: pointer;
+      background: rgba(7, 10, 18, 0.94); border: 1px solid var(--c); border-left: 4px solid var(--c); border-radius: 6px;
+      padding: 9px 12px 10px; font-size: 12px; box-shadow: 0 0 22px -6px var(--c), inset 0 0 30px -18px var(--c);
+      animation: toast-in 0.55s cubic-bezier(.2, 1.5, .4, 1) both;
+    }
+    .toast.out { animation: toast-out 0.4s ease-in both; }
+    @keyframes toast-in { from { transform: translateX(110%) scale(0.85); opacity: 0; } to { transform: none; opacity: 1; } }
+    @keyframes toast-out { to { transform: translateX(110%); opacity: 0; } }
+    .toast::before {   /* a light sweep across the card */
+      content: ''; position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.22) 50%, transparent 70%);
+      transform: translateX(-120%); animation: sweep 1.1s 0.3s ease-out 2;
+    }
+    @keyframes sweep { to { transform: translateX(120%); } }
+    .toast .kind { display: flex; align-items: center; gap: 7px; color: var(--c); font-weight: 700; letter-spacing: 2px;
+                   text-transform: uppercase; font-size: 11px; text-shadow: 0 0 8px var(--c); }
+    .toast .kind .ic { font-size: 16px; animation: pop 0.6s 0.2s cubic-bezier(.2, 2, .4, 1) both; }
+    @keyframes pop { from { transform: scale(0) rotate(-40deg); } to { transform: none; } }
+    .toast .where { color: #fff; font-size: 14px; font-weight: 700; margin: 3px 0 2px; }
+    .toast .line { color: var(--muted); }
+    .toast .line b { color: #fff; font-weight: 400; }
+    .toast .bar { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--c); animation: drain linear both; }
+    @keyframes drain { from { width: 100%; } to { width: 0; } }
+    .toast.big { border-width: 2px; padding: 12px 14px 13px; }
+    .toast.big .where { font-size: 16px; }
+    .toast.virus { animation: toast-in 0.55s cubic-bezier(.2, 1.5, .4, 1) both, glitch 2.3s 0.6s steps(1) infinite; }
+    .confetti { position: absolute; width: 6px; height: 6px; border-radius: 1px; pointer-events: none;
+                animation: fly 1.3s ease-out forwards; }
+    @keyframes fly { to { transform: translate(var(--dx), var(--dy)) rotate(var(--r)); opacity: 0; } }
+    /* A burst on the tile that changed. */
+    .burst { pointer-events: none; transform-box: fill-box; transform-origin: center; animation: burst 1.6s ease-out forwards; }
+    @keyframes burst { from { transform: scale(0.2); opacity: 1; } to { transform: scale(2.6); opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) {
+      .toast, .toast.out, .toast::before, .toast .kind .ic, .confetti, .burst { animation: none !important; }
+    }
+
     .tip {
       position: absolute; z-index: 2; display: none; pointer-events: none; white-space: nowrap;
       transform: translate(-50%, -100%); background: rgba(7, 9, 15, 0.95);
@@ -199,6 +241,7 @@
     <div class="map-wrap" id="wrap">
       <svg id="map" aria-label="map of nodes"></svg>
       <div class="tip" id="tip"></div>
+      <div class="toasts" id="toasts" aria-live="polite"></div>
     </div>
 
     <div class="bar">
@@ -919,8 +962,118 @@
       s.className = err ? 'err' : '';
     }
 
+    // ---- Flash announcements ----
+    // Every refresh is compared with the last one; what changed pops up top
+    // right on the map (and bursts on its tile): a node claimed, changing
+    // hands, infected or cured, a boss beaten, a Gateway opening or sealing.
+    // Only from what the public boards show, so nothing new is revealed.
+    const ringIn = (rows, n) => {
+      const prev = state.rows;
+      state.rows = rows;
+      const r = superRing(n);
+      state.rows = prev;
+      return r;
+    };
+    const petLine = c => [c.name, c.faction || 'no faction', c.class && c.class !== 'None' ? c.class : '', 'Lv ' + c.level].filter(Boolean).join(' · ');
+    function changes(before, after) {
+      if (!before) return [];
+      const old = new Map(before.map(n => [String(n.node_id), n])), out = [];
+      for (const n of after) {
+        const o = old.get(String(n.node_id));
+        if (!o) continue;
+        const c = n.champion, oc = o.champion, b = n.boss || {}, ob = o.boss || {};
+        if (!infected(o) && infected(n)) {
+          out.push({ n, kind: 'virus', icon: '☣', title: 'Infected', col: VIRUS_COLOR, big: false,
+                     lines: [`${b.name} took it${b.virus && b.virus.from ? ' from ' + b.virus.from : ''}`,
+                             `Virus Lv ${b.level} · ${fmt(b.maxHp)} HP · beat it once to cure`] });
+        } else if (infected(o) && !infected(n)) {
+          const by = (n.top5 && n.top5[0]) || (o.top5 && o.top5[0]);
+          out.push({ n, kind: 'cure', icon: '✚', title: 'Cured', col: '#7dffcf', big: false,
+                     lines: [by ? `Cured by ${by.name}${by.faction ? ' · ' + by.faction : ''}` : `${ob.name} is gone`, 'Open to claim again'] });
+        } else if (c && !oc) {
+          out.push({ n, kind: 'claim', icon: '⚑', title: n.is_super ? 'Gateway claimed' : 'Node claimed', col: kcolor(c.faction || UNALIGNED), big: !!n.is_super,
+                     lines: [petLine(c), `Boss ${b.name || bossLabel(b)} Lv ${b.level} · ${pct(b.hp || 0, b.maxHp || 0)} HP`] });
+        } else if (c && oc && c.name !== oc.name) {
+          const flip = (c.faction || '') !== (oc.faction || '');
+          out.push({ n, kind: 'flip', icon: '⚔', title: flip ? 'Changed hands' : 'New champion', col: kcolor(c.faction || UNALIGNED), big: flip || !!n.is_super,
+                     lines: [petLine(c), `Took it from ${oc.name}${flip && oc.faction ? ' (' + oc.faction + ')' : ''}`] });
+        }
+        if (!infected(n) && !infected(o) && (b.level || 1) > (ob.level || 1)) {
+          const top = n.top5 && n.top5[0];
+          out.push({ n, kind: 'boss', icon: n.is_super ? '★' : '👹', title: n.is_super ? 'Gateway boss down' : 'Boss defeated',
+                     col: n.is_super ? SUPER_COLOR : '#ff7a59', big: !!n.is_super,
+                     lines: [`${ob.name || 'Boss'} Lv ${ob.level || 1} fell${top ? ' · top damage ' + top.name : ''}`,
+                             `Next: ${b.name || 'Boss'} Lv ${b.level} · ${fmt(b.maxHp || 0)} HP`] });
+        }
+        if (n.is_super) {
+          const was = ringIn(before, o).holder, now = ringIn(after, n);
+          if (!was && now.holder) {
+            out.push({ n, kind: 'gate', icon: '★', title: 'Gateway opened', col: SUPER_COLOR, big: true,
+                       lines: [`${now.holder} hold all 8 around ${superTitle(n)}`, `Only ${now.holder} pets can enter · boss Lv ${b.level}`] });
+          } else if (was && !now.holder) {
+            out.push({ n, kind: 'gate', icon: '🔒', title: 'Gateway sealed', col: SUPER_COLOR, big: false,
+                       lines: [`${was} lost the ring around ${superTitle(n)}`, now.have ? `${now.lead} hold ${now.have}/8` : 'Nobody holds the ring'] });
+          }
+        }
+      }
+      return out;
+    }
+    const bossLabel = b => 'Lv ' + (b.level || 1);
+
+    const MAX_TOASTS = 4, MAX_PER_REFRESH = 6;
+    function announce(events) {
+      const extra = events.length - MAX_PER_REFRESH;
+      events.slice(0, MAX_PER_REFRESH).forEach((e, k) => setTimeout(() => toast(e), k * 700));
+      if (extra > 0) setTimeout(() => toast({ n: null, kind: 'more', icon: '…', title: `${extra} more change${extra === 1 ? '' : 's'}`,
+                                              col: 'var(--accent)', lines: ['See the cards below'] }), MAX_PER_REFRESH * 700);
+    }
+    function toast(e) {
+      const box = $('toasts');
+      while (box.children.length >= MAX_TOASTS) box.firstChild.remove();
+      const t = el('div', 'toast' + (e.big ? ' big' : '') + (e.kind === 'virus' ? ' virus' : ''));
+      t.style.setProperty('--c', e.col);
+      const kind = el('div', 'kind');
+      kind.append(el('span', 'ic', e.icon), e.title);
+      t.append(kind);
+      if (e.n) t.append(el('div', 'where', e.n.is_super ? '★ ' + superTitle(e.n) + ' · ' + e.n.name : e.n.name));
+      e.lines.forEach(l => t.append(el('div', 'line', l)));
+      const life = e.big ? 14000 : 9000, bar = el('div', 'bar');
+      bar.style.animationDuration = life + 'ms';
+      t.append(bar);
+      if (e.n) t.onclick = () => select(e.n.node_id, true);
+      box.append(t);
+      // Fanfare: confetti from the card, more for the big moments.
+      for (let k = 0, m = e.big ? 26 : e.kind === 'virus' ? 0 : 12; k < m; k++) {
+        const c = el('i', 'confetti');
+        c.style.left = (10 + Math.random() * 80) + '%';
+        c.style.top = '40%';
+        c.style.background = Math.random() < 0.3 ? '#fff' : e.col;
+        c.style.setProperty('--dx', (Math.random() * 160 - 80).toFixed(0) + 'px');
+        c.style.setProperty('--dy', (Math.random() * -70 - 10).toFixed(0) + 'px');
+        c.style.setProperty('--r', (Math.random() * 720 - 360).toFixed(0) + 'deg');
+        c.style.animationDelay = (Math.random() * 0.25).toFixed(2) + 's';
+        t.append(c);
+      }
+      if (e.n) burst(e.n, e.col, e.big);
+      setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 400); }, life);
+    }
+    // Rings growing out of the changed tile.
+    function burst(n, col, big) {
+      const i = state.rows.findIndex(r => String(r.node_id) === String(n.node_id));
+      if (i < 0) return;
+      const [x, y] = nodeXY(state.rows[i]), svg = $('map');
+      for (let k = 0; k < (big ? 3 : 2); k++) {
+        const c = svgEl('circle', { class: 'burst', cx: x, cy: y, r: STEP / 2, fill: 'none', stroke: col,
+                                    'stroke-width': big ? 6 : 4, filter: 'url(#glow2)' });
+        c.style.animationDelay = (k * 0.35) + 's';
+        svg.append(c);
+        setTimeout(() => c.remove(), 2400 + k * 350);
+      }
+    }
+
     let first = true;
     function show(rows) {
+      const events = first ? [] : changes(state.rows, rows);
       state.rows = rows;
       sizeWorld(rows);
       drawMap();
@@ -931,11 +1084,13 @@
         if (cardEls[i]) cardEls[i].scrollIntoView({ block: 'center' });
       }
       first = false;
+      if (events.length) announce(events);
     }
 
     async function load() {
       if (DEMO) {
-        show(demoRows());
+        // The demo makes something happen on every refresh, to show off the announcements.
+        show(first ? demoRows() : demoChange(state.rows));
         setStatus('demo data (made up)');
         return;
       }
@@ -950,8 +1105,36 @@
       }
     }
 
+    // Something new every few seconds in the demo; every 20 s live (not while the tab is hidden).
     load();
-    setInterval(load, 60 * 1000);
+    setInterval(() => { if (!document.hidden) load(); }, DEMO ? 6000 : 20 * 1000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+
+    // One made-up change to the demo map: a claim, a takeover, an infection,
+    // a cure or a boss beaten (a copy; the rows stay as they were).
+    function demoChange(rows) {
+      const next = rows.map(n => JSON.parse(JSON.stringify(n)));
+      const pick = f => { const c = next.filter(f); return c[Math.floor(Math.random() * c.length)]; };
+      const factions = Object.keys(FACTION_COLORS), classes = ['Scout', 'Hunter', 'Fighter'];
+      const pet = () => ({ name: `${['Brave', 'Swift', 'Lucky', 'Mighty'][Math.floor(Math.random() * 4)]} Rookie #${String(1000 + Math.floor(Math.random() * 9000))}`,
+                           faction: factions[Math.floor(Math.random() * factions.length)], class: classes[Math.floor(Math.random() * 3)],
+                           level: 5 + Math.floor(Math.random() * 90) });
+      const r = Math.random();
+      let n;
+      if (r < 0.25 && (n = pick(x => !x.champion && !infected(x)))) n.champion = pet();
+      else if (r < 0.5 && (n = pick(x => x.champion && !infected(x)))) n.champion = pet();
+      else if (r < 0.65 && (n = pick(x => x.is_virtual && !x.is_super && !infected(x)))) {
+        const lvl = 10 + Math.floor(Math.random() * 10), maxHp = 7756 + Math.floor(Math.random() * 6000);
+        n.boss = { name: 'Glitch Wraith', level: lvl, hp: maxHp, maxHp, virus: { left: 1, from: n.champion ? n.champion.name : '' } };
+        n.champion = null; n.top5 = [];
+      } else if (r < 0.8 && (n = pick(x => infected(x)))) {
+        n.boss = { name: 'Stone Golem', level: 1, hp: 5000, maxHp: 5000 }; n.top5 = [{ name: pet().name, faction: '', class: 'Fighter', damage: 9000 }];
+      } else if ((n = pick(x => !infected(x)))) {
+        const lvl = (n.boss.level || 1) + 1, maxHp = Math.round(5000 * Math.pow(1.05, lvl - 1));
+        n.boss = { name: 'Frost Wyrm', level: lvl, hp: maxHp, maxHp };
+      }
+      return next;
+    }
 
     // ============================================================
     // Activity log
