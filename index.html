@@ -105,7 +105,17 @@
     .card h2 .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tag { font-size: 11px; font-weight: 400; color: #55627a; }
     .super-text { color: #ffd84a; text-shadow: 0 0 8px rgba(255, 216, 74, 0.5); }
-    .card.super { border-color: rgba(255, 216, 74, 0.55); }
+    .card.super {
+      grid-column: span 2; border-color: rgba(255, 216, 74, 0.6); border-left-color: #ffd84a;
+      background: linear-gradient(135deg, rgba(255, 216, 74, 0.13), var(--card) 55%); box-shadow: 0 0 18px -8px #ffd84a;
+    }
+    @media (max-width: 560px) { .card.super { grid-column: auto; } }
+    .card h2 .title { color: #ffd84a; letter-spacing: 2px; text-transform: uppercase; }
+    .ringbar { display: flex; gap: 4px; margin: 6px 0 2px; }
+    .ringbar i { flex: 1; height: 7px; border-radius: 2px; background: #1d2433; }
+    .super-frame { stroke-dasharray: 10 7; animation: march 1.6s linear infinite; }
+    @keyframes march { to { stroke-dashoffset: -17; } }
+    .node-dot .crown-ring { animation: spin 18s linear infinite; }
     .tag.you { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: #fff; border: 1px solid #fff; border-radius: 2px; padding: 0 5px; }
     .champ { color: #fff; }
     .meta { font-size: 12px; color: var(--muted); }
@@ -210,7 +220,7 @@
       no accounts, and no cookies or tracking. Boards update when nodes report in.
       Dashed markers are virtual nodes: pets reach them over home Wi-Fi. Every night from 12 to 5am
       Pacific, a virus takes over a few of them (green); beat its boss once to cure one.
-      Gold stars are super nodes: they open only to a faction whose champions hold all 8 nodes around one.
+      Gold stars in marching gold frames are super nodes (North, East, South and West Crown), with how much of the ring a faction holds. They open only to a faction whose champions hold all 8 nodes around one.
       Their bosses are much tougher and their finds much rarer, and beating one infects all 8 nodes around it.
       Stronger nodes (champion level plus boss level) hold more land and glow brighter, with up to 3 pips.
       The marks on the land (peaks, trees, water, dunes, grass) come from each node's name.
@@ -268,17 +278,23 @@
     // A super node (is_super; supabase/functions/_shared/super.ts) opens only to
     // the faction whose champions hold all 8 nodes around it: ringHolder().
     const SUPER_COLOR = '#ffd84a';
-    function superHolder(n) {
+    const AROUND8 = [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]];
+    // A super node's ring: the 8 neighbors' factions ('' = empty, infected or
+    // missing), the faction holding all 8 ('' = locked) and the one closest to it.
+    function superRing(n) {
       const [x, y] = worldXY(n);
-      let holder = '';
-      for (const [di, dj] of [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]]) {
+      const slots = AROUND8.map(([di, dj]) => {
         const m = state.rows.find(r => r.world_x === x + di * STEP && r.world_y === y + dj * STEP);
-        const f = m && !infected(m) && m.champion ? m.champion.faction : '';
-        if (!f || (holder && f !== holder)) return '';
-        holder = f;
-      }
-      return holder;
+        return m && !infected(m) && m.champion ? m.champion.faction || '' : '';
+      });
+      const counts = {};
+      slots.forEach(f => { if (f) counts[f] = (counts[f] || 0) + 1; });
+      const [lead, have] = Object.entries(counts).sort((p, q) => q[1] - p[1])[0] || ['', 0];
+      return { slots, holder: have === 8 ? lead : '', lead, have };
     }
+    const superHolder = n => superRing(n).holder;
+    const superTitle = n => n.title || 'Super node';
+    const ringText = r => r.holder ? 'open to ' + r.holder : r.have ? `locked · ${r.lead} ${r.have}/8` : 'locked · 0/8';
     const fkey = n => infected(n) ? INFECTED : !n.champion ? OPEN : (n.champion.faction || UNALIGNED);
     const kcolor = k => k === INFECTED ? VIRUS_COLOR : k === OPEN ? '#667' : (FACTION_COLORS[k] || '#777');
     const kname = k => k === INFECTED ? 'Infected' : k === OPEN ? 'Open' : k === UNALIGNED ? 'Unaligned' : k;
@@ -578,6 +594,10 @@
         terrainMarks(g, n, i, owner, open ? '#7d93a8' : col);
         g.append(svgEl('path', { class: 'edge', d: edge[i], fill: 'none', stroke: col, 'stroke-width': 1.5,
                                  'stroke-opacity': open ? 0.35 : 0.6, 'stroke-linecap': 'round' }));
+        if (n.is_super) {   // a super node's own land: gold-rimmed, whoever holds it
+          g.append(svgEl('path', { d: edge[i] + coast[i], fill: 'none', stroke: SUPER_COLOR, 'stroke-width': 3,
+                                   'stroke-opacity': 0.9, 'stroke-linecap': 'round', filter: 'url(#glow)' }));
+        }
         g.append(svgEl('path', {
           class: 'edge', d: coast[i], fill: 'none', stroke: open ? '#3d6a86' : col, 'stroke-width': sick ? 3 : 2.5, 'stroke-linecap': 'round',
           'stroke-opacity': 0.9, filter: sick ? 'url(#glow2)' : 'url(#glow)',
@@ -590,6 +610,21 @@
       // Infected land on top, so its glowing edges aren't covered by the neighbors'.
       zoneEls.forEach(g => { if (g.classList.contains('virus')) land.append(g); });
 
+      // Super nodes: a marching gold frame around each 3x3 block, its title and
+      // how close a faction is to holding the ring, over the land.
+      rows.forEach((n, i) => {
+        if (!n.is_super) return;
+        const [x, y] = pts[i], half = STEP * 1.5 - 6, r = superRing(n);
+        svg.append(svgEl('rect', { class: 'super-frame', x: x - half, y: y - half, width: 2 * half, height: 2 * half, rx: 28,
+                                   fill: 'none', stroke: SUPER_COLOR, 'stroke-width': 2.5, 'stroke-opacity': 0.8, filter: 'url(#glow)',
+                                   'pointer-events': 'none' }));
+        const t = svgEl('text', { x, y: y - half - 12, 'text-anchor': 'middle', fill: SUPER_COLOR, 'font-size': 30, 'font-weight': 700,
+                                  'letter-spacing': 3, 'font-family': 'ui-monospace, Menlo, Consolas, monospace',
+                                  stroke: '#05070d', 'stroke-width': 5, 'paint-order': 'stroke', 'pointer-events': 'none' });
+        t.textContent = '★ ' + superTitle(n).toUpperCase() + ' · ' + ringText(r);
+        svg.append(t);
+      });
+
       // Nodes: pulsing diamonds drawn around (0, 0) and placed (and scaled)
       // by placeMarkers; a white outer ring marks the ones your pet leads.
       const diamond = r => `0,${-r} ${r},0 0,${r} ${-r},0`;
@@ -601,7 +636,11 @@
           g.append(svgEl('circle', { class: 'halo', r: 12 + 20 * t, fill: n.is_super ? SUPER_COLOR : col,
                                      'fill-opacity': 0.12 + 0.4 * t, filter: 'url(#halo)' }));
         }
-        for (let p = 0, np = pips(t); p < np; p++) {
+        if (n.is_super) {
+          g.append(svgEl('circle', { class: 'crown-ring', r: 24, fill: 'none', stroke: SUPER_COLOR, 'stroke-width': 1.5, 'stroke-dasharray': '3 4' }));
+          g.append(svgEl('path', { d: 'M-9 -24L-9 -33L-4.5 -28L0 -35L4.5 -28L9 -33L9 -24Z', fill: SUPER_COLOR, filter: 'url(#glow)' }));
+        }
+        for (let p = 0, np = n.is_super ? 0 : pips(t); p < np; p++) {
           g.append(svgEl('polygon', { points: `${(p - (np - 1) / 2) * 8},-25 ${(p - (np - 1) / 2) * 8 + 3},-21 ${(p - (np - 1) / 2) * 8 - 3},-21`,
                                       fill: n.is_super ? SUPER_COLOR : '#fff', 'fill-opacity': 0.85 }));
         }
@@ -617,7 +656,8 @@
           'font-size': 14, 'font-family': 'ui-monospace, Menlo, Consolas, monospace', 'letter-spacing': 1,
           stroke: '#05070d', 'stroke-width': 4, 'paint-order': 'stroke',
         });
-        label.textContent = n.name;
+        label.textContent = n.is_super ? '★ ' + superTitle(n) : n.name;
+        if (n.is_super) label.setAttribute('fill', SUPER_COLOR);
         g.append(label);
         g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(n.node_id, true); } });
         hover(g, n);
@@ -671,11 +711,11 @@
       const sx = d.left + d.width / 2 - w.left, sy = d.top + d.height / 2 - w.top, off = d.height / 2 + 6;
       const tip = $('tip'), b = n.boss || {};
       tip.replaceChildren(
-        el('b', null, n.name),
+        el('b', n.is_super ? 'super-text' : null, n.is_super ? '★ ' + superTitle(n) + ' · ' + n.name : n.name),
         el('div', null, infected(n) ? 'Infected by ' + b.name : n.champion ? n.champion.name + ' · ' + kname(fkey(n)) : 'Open: no champion'),
         el('div', 'muted', (b.name || 'Boss') + ' ' + pct(b.hp || 0, b.maxHp || 0) + ' HP'));
       tip.append(el('div', 'muted', 'Strength ' + ['▱▱▱', '▰▱▱', '▰▰▱', '▰▰▰'][pips(powers[i] || 0)] + ' · ' + terrainOf(n)));
-      if (n.is_super) tip.append(el('div', 'super-text', superHolder(n) ? '★ Open to ' + superHolder(n) : '★ Super node · locked'));
+      if (n.is_super) tip.append(el('div', 'super-text', '★ Super node · ' + ringText(superRing(n))));
       const below = sy - off < 70;
       tip.style.left = Math.min(Math.max(sx, 110), w.width - 110) + 'px';
       tip.style.top = (below ? sy + off : sy - off) + 'px';
@@ -751,7 +791,7 @@
 
     function renderCards() {
       const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
-      const shown = state.rows.filter(visible).sort(byName);
+      const shown = state.rows.filter(visible).sort((a, b) => (b.is_super ? 1 : 0) - (a.is_super ? 1 : 0) || byName(a, b));
       cardEls = state.rows.map(() => null);
       if (!state.rows.length) { $('cards').replaceChildren(el('div', 'empty', 'No nodes online yet.')); return; }
       if (!shown.length) { $('cards').replaceChildren(el('div', 'empty', 'No nodes match.')); return; }
@@ -769,14 +809,17 @@
       box.onclick = () => select(n.node_id, false);
 
       const h = el('h2');
+      if (n.is_super) h.append(el('span', 'title', '★ ' + superTitle(n)));
       h.append(swatch(k), el('span', 'nm', n.name));
       if (n.is_virtual) h.append(el('span', 'tag', 'virtual'));
       box.append(h);
       if (n.is_super) {
-        const holder = superHolder(n);
-        box.append(el('div', 'meta super-text', holder
-          ? '★ Super node · open to ' + holder
-          : '★ Super node · locked: one faction must hold all 8 nodes around it'));
+        const r = superRing(n), bar = el('div', 'ringbar');
+        r.slots.forEach(f => { const i = el('i'); if (f) i.style.background = kcolor(f); bar.append(i); });
+        bar.title = 'The 8 nodes around it, by champion faction';
+        box.append(el('div', 'meta super-text', r.holder
+          ? `★ Super node · open to ${r.holder}: boss Lv ${b.level || 20}, rare finds every scavenge`
+          : `★ Super node · locked: one faction must hold all 8 nodes around it` + (r.have ? ` (${r.lead} ${r.have}/8)` : '')), bar);
       }
 
       if (infected(n)) {
@@ -942,7 +985,7 @@
         return;
       }
       try {
-        const res = await fetch(SUPABASE_URL + '/rest/v1/node_state?select=node_id,name,map_x,map_y,world_x,world_y,champion,boss,top5,rarest,updated_day,is_virtual,is_super&order=name',
+        const res = await fetch(SUPABASE_URL + '/rest/v1/node_state?select=node_id,name,map_x,map_y,world_x,world_y,champion,boss,top5,rarest,updated_day,is_virtual,is_super,title&order=name',
                                 { headers: { apikey: SUPABASE_KEY }, cache: 'no-store' });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         show(await res.json());
