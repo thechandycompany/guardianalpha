@@ -263,7 +263,7 @@
       no accounts, and no cookies or tracking. Boards update when nodes report in.
       Dashed markers are virtual nodes: pets reach them over home Wi-Fi. Every night from 12 to 5am
       Pacific, a virus takes over a few of them (green); beat its boss once to cure one.
-      Gold stars in marching gold frames are super nodes (the North, East, South and West Gateways), with how much of the ring a faction holds. They open only to a faction whose champions hold all 8 nodes around one.
+      Gold stars in marching gold frames are the Super Gateways (North, East, South and West), with how much of the ring a faction holds. They open only to a faction whose champions hold all 8 nodes around one.
       Their bosses are much tougher and their finds much rarer, and beating one infects all 8 nodes around it.
       Stronger nodes (champion level plus boss level) have brighter tiles and bigger, brighter markers, with up to 3 pips.
       The marks on the tiles (peaks, trees, water, dunes, grass) come from each node's name.
@@ -336,7 +336,7 @@
       return { slots, holder: have === 8 ? lead : '', lead, have };
     }
     const superHolder = n => superRing(n).holder;
-    const superTitle = n => n.title || 'Super node';
+    const superTitle = n => n.title || 'Super Gateway';
     const ringText = r => r.holder ? 'open to ' + r.holder : r.have ? `locked · ${r.lead} ${r.have}/8` : 'locked · 0/8';
     const fkey = n => infected(n) ? INFECTED : !n.champion ? OPEN : (n.champion.faction || UNALIGNED);
     const kcolor = k => k === INFECTED ? VIRUS_COLOR : k === OPEN ? '#667' : (FACTION_COLORS[k] || '#777');
@@ -713,7 +713,7 @@
         el('div', null, infected(n) ? 'Infected by ' + b.name : n.champion ? n.champion.name + ' · ' + kname(fkey(n)) : 'Open: no champion'),
         el('div', 'muted', (b.name || 'Boss') + ' ' + pct(b.hp || 0, b.maxHp || 0) + ' HP'));
       tip.append(el('div', 'muted', 'Strength ' + ['▱▱▱', '▰▱▱', '▰▰▱', '▰▰▰'][pips(powers[i] || 0)] + ' · ' + terrainOf(n)));
-      if (n.is_super) tip.append(el('div', 'super-text', '★ Super node · ' + ringText(superRing(n))));
+      if (n.is_super) tip.append(el('div', 'super-text', '★ Super Gateway · ' + ringText(superRing(n))));
       const below = sy - off < 70;
       tip.style.left = Math.min(Math.max(sx, 110), w.width - 110) + 'px';
       tip.style.top = (below ? sy + off : sy - off) + 'px';
@@ -816,8 +816,8 @@
         r.slots.forEach(f => { const i = el('i'); if (f) i.style.background = kcolor(f); bar.append(i); });
         bar.title = 'The 8 nodes around it, by champion faction';
         box.append(el('div', 'meta super-text', r.holder
-          ? `★ Super node · open to ${r.holder}: boss Lv ${b.level || 20}, rare finds every scavenge`
-          : `★ Super node · locked: one faction must hold all 8 nodes around it` + (r.have ? ` (${r.lead} ${r.have}/8)` : '')), bar);
+          ? `★ Super Gateway · open to ${r.holder}: gateway boss Lv ${b.level || 20}, rare finds every scavenge`
+          : `★ Super Gateway · locked: one faction must hold all 8 nodes around it` + (r.have ? ` (${r.lead} ${r.have}/8)` : '')), bar);
       }
 
       if (infected(n)) {
@@ -965,7 +965,7 @@
     // ---- Flash announcements ----
     // Every refresh is compared with the last one; what changed pops up top
     // right on the map (and bursts on its tile): a node claimed, changing
-    // hands, infected or cured, a boss beaten, a Gateway opening or sealing.
+    // hands, infected or cured, a boss beaten, a Super Gateway opening or sealing.
     // Only from what the public boards show, so nothing new is revealed.
     const ringIn = (rows, n) => {
       const prev = state.rows;
@@ -991,7 +991,7 @@
           out.push({ n, kind: 'cure', icon: '✚', title: 'Cured', col: '#7dffcf', big: false,
                      lines: [by ? `Cured by ${by.name}${by.faction ? ' · ' + by.faction : ''}` : `${ob.name} is gone`, 'Open to claim again'] });
         } else if (c && !oc) {
-          out.push({ n, kind: 'claim', icon: '⚑', title: n.is_super ? 'Gateway claimed' : 'Node claimed', col: kcolor(c.faction || UNALIGNED), big: !!n.is_super,
+          out.push({ n, kind: 'claim', icon: '⚑', title: n.is_super ? 'Super Gateway claimed' : 'Node claimed', col: kcolor(c.faction || UNALIGNED), big: !!n.is_super,
                      lines: [petLine(c), `Boss ${b.name || bossLabel(b)} Lv ${b.level} · ${pct(b.hp || 0, b.maxHp || 0)} HP`] });
         } else if (c && oc && c.name !== oc.name) {
           const flip = (c.faction || '') !== (oc.faction || '');
@@ -1000,7 +1000,7 @@
         }
         if (!infected(n) && !infected(o) && (b.level || 1) > (ob.level || 1)) {
           const top = n.top5 && n.top5[0];
-          out.push({ n, kind: 'boss', icon: n.is_super ? '★' : '👹', title: n.is_super ? 'Gateway boss down' : 'Boss defeated',
+          out.push({ n, kind: 'boss', icon: n.is_super ? '★' : '👹', title: n.is_super ? 'Super Gateway boss down' : 'Boss defeated',
                      col: n.is_super ? SUPER_COLOR : '#ff7a59', big: !!n.is_super,
                      lines: [`${ob.name || 'Boss'} Lv ${ob.level || 1} fell${top ? ' · top damage ' + top.name : ''}`,
                              `Next: ${b.name || 'Boss'} Lv ${b.level} · ${fmt(b.maxHp || 0)} HP`] });
@@ -1008,10 +1008,10 @@
         if (n.is_super) {
           const was = ringIn(before, o).holder, now = ringIn(after, n);
           if (!was && now.holder) {
-            out.push({ n, kind: 'gate', icon: '★', title: 'Gateway opened', col: SUPER_COLOR, big: true,
+            out.push({ n, kind: 'gate', icon: '★', title: 'Super Gateway opened', col: SUPER_COLOR, big: true,
                        lines: [`${now.holder} hold all 8 around ${superTitle(n)}`, `Only ${now.holder} pets can enter · boss Lv ${b.level}`] });
           } else if (was && !now.holder) {
-            out.push({ n, kind: 'gate', icon: '🔒', title: 'Gateway sealed', col: SUPER_COLOR, big: false,
+            out.push({ n, kind: 'gate', icon: '🔒', title: 'Super Gateway sealed', col: SUPER_COLOR, big: false,
                        lines: [`${was} lost the ring around ${superTitle(n)}`, now.have ? `${now.lead} hold ${now.have}/8` : 'Nobody holds the ring'] });
           }
         }
