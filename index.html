@@ -107,14 +107,44 @@
       .toast, .toast.out, .toast::before, .toast .kind .ic, .toast .hero .big-ic, .confetti, .burst { animation: none !important; }
     }
 
+    /* The map's hover card: laid out like the notifications (the pet on the left, details on the right). */
     .tip {
-      position: absolute; z-index: 2; display: none; pointer-events: none; white-space: nowrap;
-      transform: translate(-50%, -100%); background: rgba(7, 9, 15, 0.95);
-      border: 1px solid var(--line2); border-radius: 3px; padding: 6px 9px; font-size: 12px;
+      --c: var(--accent); position: absolute; z-index: 2; display: none; pointer-events: none;
+      width: 370px; max-width: calc(100% - 12px); transform: translate(-50%, -100%);
+      background: rgba(7, 10, 18, 0.96); border: 1px solid var(--c); border-left: 4px solid var(--c); border-radius: 6px;
+      padding: 9px 12px 10px; font-size: 12px; box-shadow: 0 0 22px -6px var(--c), inset 0 0 30px -18px var(--c);
+      grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; align-items: start;
     }
     .tip.below { transform: translate(-50%, 0); }
-    .tip b { color: #fff; }
-    .tip .muted { color: var(--muted); }
+    .tip .hero { width: 74px; display: flex; flex-direction: column; align-items: center; text-align: center;
+                 font-size: 10px; line-height: 1.25; color: #fff; overflow-wrap: anywhere; }
+    .tip .hero .pa-big { width: 56px; height: 56px; margin-bottom: 4px; image-rendering: pixelated; background: #05070d;
+                         border: 1px solid var(--c); border-radius: 4px; box-shadow: 0 0 12px -3px var(--c); }
+    .tip .hero .real { color: var(--muted); }
+    .tip .hero .big-ic { font-size: 30px; line-height: 1.2; color: var(--c); text-shadow: 0 0 12px var(--c); }
+    .tip .kind { color: var(--c); font-weight: 700; letter-spacing: 2px; text-transform: uppercase; font-size: 10px; text-shadow: 0 0 8px var(--c); }
+    .tip .where { color: #fff; font-size: 14px; font-weight: 700; margin: 2px 0 3px; }
+    .tip .line { color: var(--muted); margin-top: 2px; }
+    .tip .line b { color: #fff; font-weight: 400; }
+    .tip .hp { margin: 3px 0 2px; height: 5px; }
+    .tip ol { margin: 3px 0 0; padding-left: 16px; font-size: 11px; }
+    .tip ol li .row { display: flex; gap: 8px; }
+    .tip ol li .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; }
+    .tip ol li .dmg { color: var(--muted); }
+    .tip .foot { color: #55627a; font-size: 10px; margin-top: 5px; }
+    .tip .gold { color: #ffd84a; }
+    .tip .bossrow { display: flex; justify-content: space-between; gap: 8px; }
+    .tip .bossrow span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tip .ringbar { margin: 4px 0 1px; }
+    .tip .ringbar i { height: 5px; }
+    .details { margin-top: 16px; }
+    .details-toggle { width: 100%; display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line);
+                      border-radius: 6px; padding: 9px 12px; color: #fff; font: inherit; font-size: 13px; letter-spacing: 1px; cursor: pointer; text-align: left; }
+    .details-toggle:hover { border-color: var(--line2); }
+    .details-toggle .n { color: var(--muted); font-size: 12px; }
+    .details-toggle .chev { display: inline-block; transition: transform 0.15s; }
+    .details-toggle[aria-expanded="true"] .chev { transform: rotate(90deg); }
+    .details .cards { margin-top: 12px; }
 
     /* ---- Legend (click a faction to show only its nodes) + your pet ---- */
     .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 12px 0 6px; }
@@ -158,7 +188,11 @@
       background: linear-gradient(135deg, rgba(255, 216, 74, 0.13), var(--card) 55%); box-shadow: 0 0 18px -8px #ffd84a;
     }
     @media (max-width: 560px) { .card.super { grid-column: auto; } }
-    .card h2 .title { color: #ffd84a; letter-spacing: 2px; text-transform: uppercase; }
+    .card .gate-title { color: #ffd84a; letter-spacing: 3px; text-transform: uppercase; font-size: 12px; font-weight: 700;
+                        text-shadow: 0 0 8px rgba(255, 216, 74, 0.5); margin: 0 0 4px; }
+    .card .gate-status { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; margin-top: 2px; }
+    .card .gate-status .st { color: #ffd84a; }
+    .card .gate-status .who { color: var(--muted); }
     .ringbar { display: flex; gap: 4px; margin: 6px 0 2px; }
     .ringbar i { flex: 1; height: 7px; border-radius: 2px; background: #1d2433; }
     .super-frame { stroke-dasharray: 10 7; animation: march 1.6s linear infinite; }
@@ -183,7 +217,6 @@
     .pn .real { color: var(--muted); font-size: 0.85em; }
     /* Pet art (art/<id>.png, 64x64): a small one by every pet name, a big one in the tooltip */
     .pa { width: 1.4em; height: 1.4em; vertical-align: -0.35em; margin-right: 4px; image-rendering: pixelated; background: #05070d; border-radius: 3px; }
-    .tip .pa-big { display: block; width: 64px; height: 64px; margin: 2px auto 4px; image-rendering: pixelated; background: #05070d; border: 1px solid var(--line2); border-radius: 4px; }
     .toast { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 12px; }
     .toast .hero { width: 74px; display: flex; flex-direction: column; align-items: center; text-align: center;
                    font-size: 10px; line-height: 1.25; color: #fff; overflow-wrap: anywhere; }
@@ -291,7 +324,12 @@
     </div>
     <div class="petline" id="petline" hidden></div>
 
-    <div class="cards" id="cards"></div>
+    <section class="details">
+      <button class="details-toggle" id="detailsToggle" aria-expanded="false" aria-controls="cards">
+        <span class="chev">▸</span><span>Node details</span><span class="n" id="detailsCount"></span>
+      </button>
+      <div class="cards" id="cards" hidden></div>
+    </section>
 
     <div class="nicks">
       <h2>Nicknames</h2>
@@ -392,6 +430,10 @@
     }
     const superHolder = n => superRing(n).holder;
     const superTitle = n => n.title || 'Super Gateway';
+    // "North Super Gateway" -> "North" (the map badge's big line).
+    const superShort = n => superTitle(n).replace(/\s*super\s*gateway\s*$/i, '') || 'Super';
+    // The ring's state in a few words: "Open to Wayfinders" / "Locked · Signal Keepers 5/8".
+    const ringShort = r => r.holder ? 'Open to ' + r.holder : r.have ? `Locked · ${r.lead} ${r.have}/8` : 'Locked · 0/8';
     const ringText = r => r.holder ? 'open to ' + r.holder : r.have ? `locked · ${r.lead} ${r.have}/8` : 'locked · 0/8';
     const fkey = n => infected(n) ? INFECTED : !n.champion ? OPEN : (n.champion.faction || UNALIGNED);
     const kcolor = k => k === INFECTED ? VIRUS_COLOR : k === OPEN ? '#667' : (FACTION_COLORS[k] || '#777');
@@ -738,11 +780,22 @@
         svg.append(svgEl('rect', { class: 'super-frame', x: x - half, y: y - half, width: 2 * half, height: 2 * half,
                                    fill: 'none', stroke: SUPER_COLOR, 'stroke-width': 2.5, 'stroke-opacity': 0.8, filter: 'url(#glow)',
                                    'pointer-events': 'none' }));
-        const t = svgEl('text', { x, y: y - half - 12, 'text-anchor': 'middle', fill: SUPER_COLOR, 'font-size': 30, 'font-weight': 700,
-                                  'letter-spacing': 3, 'font-family': 'ui-monospace, Menlo, Consolas, monospace',
-                                  stroke: '#05070d', 'stroke-width': 5, 'paint-order': 'stroke', 'pointer-events': 'none' });
-        t.textContent = '★ ' + superTitle(n).toUpperCase() + ' · ' + ringText(r);
-        svg.append(t);
+        // A badge on the frame's top edge (always inside it): the name big, the ring's state under it.
+        const bw = 2 * half - 30, bh = 76, by = y - half - bh / 2;
+        const badge = svgEl('g', { 'pointer-events': 'none' });
+        badge.append(svgEl('rect', { x: x - bw / 2, y: by, width: bw, height: bh, rx: 10, fill: '#0a0d16', 'fill-opacity': 0.92,
+                                     stroke: SUPER_COLOR, 'stroke-width': 2, filter: 'url(#glow)' }));
+        const font = 'ui-monospace, Menlo, Consolas, monospace';
+        const big = svgEl('text', { x, y: by + 34, 'text-anchor': 'middle', fill: SUPER_COLOR, 'font-size': 32, 'font-weight': 700,
+                                    'letter-spacing': 5, 'font-family': font });
+        big.textContent = '★ ' + superShort(n).toUpperCase() + (r.holder ? ' · OPEN' : '');
+        const small = svgEl('text', { x, y: by + 62, 'text-anchor': 'middle', fill: r.holder ? '#fff' : '#e6cf7a', 'font-size': 20,
+                                      'letter-spacing': 1, 'font-family': font, textLength: bw - 24, lengthAdjust: 'spacingAndGlyphs' });
+        small.textContent = ringShort(r);
+        // Short text doesn't need squeezing.
+        if (ringShort(r).length * 12.2 < bw - 24) { small.removeAttribute('textLength'); small.removeAttribute('lengthAdjust'); }
+        badge.append(big, small);
+        svg.append(badge);
       });
 
       // Nodes: pulsing diamonds drawn around (0, 0) and placed (and scaled)
@@ -826,23 +879,61 @@
       $('map').classList.toggle('far', STEP * z < 130);
     }
 
+    // The map's hover card, laid out like the notifications: the champion (picture + name) or a big
+    // icon on the left; what the node is, its champion, boss, top damage and find on the right.
     function showTip(n) {
       const i = state.rows.indexOf(n), d = dotEls[i].getBoundingClientRect(), w = $('wrap').getBoundingClientRect();
       const sx = d.left + d.width / 2 - w.left, sy = d.top + d.height / 2 - w.top, off = d.height / 2 + 6;
-      const tip = $('tip'), b = n.boss || {};
-      tip.replaceChildren();
-      if (n.champion && !infected(n)) tip.append(petImg(n.champion.name, 'pa-big'));
-      tip.append(
-        el('b', n.is_super ? 'super-text' : null, n.is_super ? '★ ' + superTitle(n) + ' · ' + n.name : n.name),
-        el('div', null, infected(n) ? 'Infected by ' + b.name : n.champion ? petLabel(n.champion.name) + ' · ' + kname(fkey(n)) : 'Open: no champion'),
-        el('div', 'muted', (b.name || 'Boss') + ' ' + pct(b.hp || 0, b.maxHp || 0) + ' HP'));
-      tip.append(el('div', 'muted', 'Strength ' + ['▱▱▱', '▰▱▱', '▰▰▱', '▰▰▰'][pips(powers[i] || 0)] + ' · ' + terrainOf(n)));
-      if (n.is_super) tip.append(el('div', 'super-text', '★ Super Gateway · ' + ringText(superRing(n))));
-      const below = sy - off < 70;
-      tip.style.left = Math.min(Math.max(sx, 110), w.width - 110) + 'px';
+      const tip = $('tip'), b = n.boss || {}, c = n.champion, sick = infected(n), k = fkey(n);
+      tip.style.setProperty('--c', n.is_super ? SUPER_COLOR : kcolor(k));
+      const hero = el('div', 'hero'), body = el('div', 'body');
+      if (c && !sick) {
+        hero.append(petImg(c.name, 'pa-big'), el('div', null, nickOf(c.name) || c.name));
+        if (nickOf(c.name)) hero.append(el('div', 'real', c.name));
+      } else {
+        hero.append(el('div', 'big-ic', sick ? '☣' : n.is_super ? '★' : '◇'), el('div', 'real', sick ? 'Infected' : 'Open'));
+      }
+      body.append(el('div', 'kind', n.is_super ? '★ ' + superTitle(n) : sick ? 'Infected node' : n.is_virtual ? 'Virtual node' : 'Node'),
+                  el('div', 'where', n.name));
+      if (sick) {
+        body.append(el('div', 'line', 'Nobody can claim it' + (b.virus && b.virus.from ? ' · took over from ' + petLabel(b.virus.from) : '')));
+      } else if (c) {
+        body.append(el('div', 'line', [c.faction || 'no faction', c.class && c.class !== 'None' ? c.class : '', 'Lv ' + c.level].filter(Boolean).join(' · ')));
+      } else {
+        body.append(el('div', 'line', 'No champion yet: open to claim'));
+      }
+      const boss = el('div', 'line bossrow');
+      boss.append(el('span', null, (sick ? '☣ ' : '👹 ') + (b.name || 'Boss') + ' · Lv ' + (b.level || 1)), el('b', null, pct(b.hp || 0, b.maxHp || 0) + ' HP'));
+      const hp = el('div', 'hp'), f = el('div');
+      f.style.width = Math.round(100 * hpFrac(n)) + '%';
+      hp.append(f);
+      body.append(boss, hp);
+      if (n.is_super) {
+        const r = superRing(n), bar = el('div', 'ringbar');
+        r.slots.forEach(fc => { const s = el('i'); if (fc) s.style.background = kcolor(fc); bar.append(s); });
+        body.append(el('div', 'line gold', ringShort(r)), bar);
+      }
+      if (n.top5 && n.top5.length) {
+        const ol = el('ol');
+        n.top5.slice(0, 3).forEach(r => {
+          const li = el('li'), row = el('div', 'row');
+          if (r.faction) li.style.color = kcolor(r.faction);
+          row.append(el('span', 'who', nickOf(r.name) || r.name), el('span', 'dmg', fmt(r.damage)));
+          li.append(row);
+          ol.append(li);
+        });
+        body.append(el('div', 'line', 'Top damage'), ol);
+      }
+      if (n.rarest) body.append(el('div', 'line', '🔍 ' + n.rarest.item + ' · ' + petLabel(n.rarest.by)));
+      body.append(el('div', 'foot', 'Strength ' + ['▱▱▱', '▰▱▱', '▰▰▱', '▰▰▰'][pips(powers[i] || 0)] + ' · ' + terrainOf(n)
+                                   + (n.updated_day ? ' · updated ' + n.updated_day : '')));
+      tip.replaceChildren(hero, body);
+      tip.style.display = 'grid';
+      const below = sy - off < tip.offsetHeight + 10;
+      const halfW = tip.offsetWidth / 2 + 6;
+      tip.style.left = Math.min(Math.max(sx, halfW), w.width - halfW) + 'px';
       tip.style.top = (below ? sy + off : sy - off) + 'px';
       tip.classList.toggle('below', below);
-      tip.style.display = 'block';
     }
     const hideTip = () => { $('tip').style.display = 'none'; };
 
@@ -912,10 +1003,16 @@
                            el('b', null, String(boards)), ` damage board${boards === 1 ? '' : 's'}`);
     }
 
+    // Node details: built only while the section is open (closed by default).
+    let detailsOpen = localStorage.getItem('vpetDetailsOpen') === '1';
     function renderCards() {
       const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
       const shown = state.rows.filter(visible).sort((a, b) => (b.is_super ? 1 : 0) - (a.is_super ? 1 : 0) || byName(a, b));
       cardEls = state.rows.map(() => null);
+      $('detailsCount').textContent = shown.length === state.rows.length ? `(${shown.length} nodes)` : `(${shown.length} of ${state.rows.length})`;
+      $('detailsToggle').setAttribute('aria-expanded', String(detailsOpen));
+      $('cards').hidden = !detailsOpen;
+      if (!detailsOpen) { $('cards').replaceChildren(); return; }
       if (!state.rows.length) { $('cards').replaceChildren(el('div', 'empty', 'No nodes online yet.')); return; }
       if (!shown.length) { $('cards').replaceChildren(el('div', 'empty', 'No nodes match.')); return; }
       $('cards').replaceChildren(...shown.map(n => {
@@ -931,8 +1028,8 @@
       box.style.setProperty('--c', kcolor(k));
       box.onclick = () => select(n.node_id, false);
 
+      if (n.is_super) box.append(el('div', 'gate-title', '★ ' + superTitle(n)));
       const h = el('h2');
-      if (n.is_super) h.append(el('span', 'title', '★ ' + superTitle(n)));
       h.append(swatch(k), el('span', 'nm', n.name));
       if (n.is_virtual) h.append(el('span', 'tag', 'virtual'));
       box.append(h);
@@ -940,9 +1037,10 @@
         const r = superRing(n), bar = el('div', 'ringbar');
         r.slots.forEach(f => { const i = el('i'); if (f) i.style.background = kcolor(f); bar.append(i); });
         bar.title = 'The 8 nodes around it, by champion faction';
-        box.append(el('div', 'meta super-text', r.holder
-          ? `★ Super Gateway · open to ${r.holder}: gateway boss Lv ${b.level || 20}, rare finds every scavenge`
-          : `★ Super Gateway · locked: one faction must hold all 8 nodes around it` + (r.have ? ` (${r.lead} ${r.have}/8)` : '')), bar);
+        const st = el('div', 'gate-status');
+        st.append(el('span', 'st', r.holder ? '★ Open to ' + r.holder : '🔒 Locked'),
+                  el('span', 'who', r.holder ? 'rare finds every scavenge' : r.have ? `${r.lead} hold ${r.have} of 8` : 'nobody holds the ring'));
+        box.append(bar, st);
       }
 
       if (infected(n)) {
@@ -989,6 +1087,11 @@
     }
 
     // ---- Controls ----
+    $('detailsToggle').onclick = () => {
+      detailsOpen = !detailsOpen;
+      localStorage.setItem('vpetDetailsOpen', detailsOpen ? '1' : '0');
+      renderCards();
+    };
     $('pet').value = state.pet;
     $('pet').addEventListener('input', e => { state.pet = e.target.value; applyState(); });
     $('petClear').onclick = () => { state.pet = ''; $('pet').value = ''; applyState(); };
