@@ -171,6 +171,15 @@
     ol li .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     ol li .dmg { color: var(--muted); }
     .find { font-size: 12px; margin-top: 10px; color: var(--muted); }
+    /* Nicknames (this browser only): click a pet's name to set one */
+    .pn { cursor: pointer; border-bottom: 1px dotted rgba(255, 255, 255, 0.3); }
+    .pn:hover, .pn:focus-visible { border-bottom-color: var(--accent); outline: none; }
+    .pn .real { color: var(--muted); font-size: 0.85em; }
+    .nicks { margin: 24px 0 0; }
+    .nicks h2 { font-size: 14px; margin: 0 0 4px; color: #fff; }
+    .nicks ul { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+    .nicks li { display: flex; gap: 10px; align-items: center; padding: 3px 0; }
+    .nicks li .real { color: var(--muted); flex: 1; }
     .me { outline: 1px solid rgba(255, 255, 255, 0.5); outline-offset: 2px; border-radius: 2px; }
     .empty { color: var(--muted); padding: 14px 0; text-align: center; grid-column: 1 / -1; }
 
@@ -256,6 +265,12 @@
     <div class="petline" id="petline" hidden></div>
 
     <div class="cards" id="cards"></div>
+
+    <div class="nicks">
+      <h2>Nicknames</h2>
+      <div class="act-cap">Click any pet's name to give it a nickname. They're kept in this browser only.</div>
+      <ul id="nickList"></ul>
+    </div>
 
     <div class="foot">
       The map is made up: a node's spot on it has nothing to do with where it really is.
@@ -358,6 +373,37 @@
     const pct = (a, b) => b ? Math.round(100 * a / b) + '%' : '0%';
     const hpFrac = n => (n.boss && n.boss.maxHp) ? n.boss.hp / n.boss.maxHp : 1;
     const swatch = k => { const s = el('i', 'sw'); s.style.setProperty('--c', kcolor(k)); return s; };
+
+    // Nicknames for pets ("Quirky Nomad #5770" -> "Dad's"), kept in this browser
+    // only: the boards keep the generated names. petLabel() for plain text,
+    // petEl() for a name you click to set one.
+    const NICK_STORE = 'vpetNicknames';
+    let nicks = {};
+    try { nicks = JSON.parse(localStorage.getItem(NICK_STORE) || '{}') || {}; } catch (_) { nicks = {}; }
+    const nickOf = name => (name && Object.hasOwn(nicks, name)) ? nicks[name] : '';
+    const petLabel = name => nickOf(name) ? `${nickOf(name)} (${name})` : (name || '');
+    function petEl(name) {
+      const s = el('span', 'pn');
+      if (nickOf(name)) s.append(nickOf(name) + ' ', el('span', 'real', name));
+      else s.textContent = name;
+      s.title = (nickOf(name) ? 'Change the' : 'Set a') + ' nickname for ' + name;
+      s.tabIndex = 0;
+      s.setAttribute('role', 'button');
+      s.onclick = e => { e.stopPropagation(); editNick(name); };
+      s.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); editNick(name); } };
+      return s;
+    }
+    function editNick(name) {
+      if (!name) return;
+      const v = prompt(`Nickname for ${name} (leave empty to remove):`, nickOf(name));
+      if (v !== null) setNick(name, v);
+    }
+    function setNick(name, v) {
+      v = v.trim().slice(0, 40);
+      if (v) nicks[name] = v; else delete nicks[name];
+      localStorage.setItem(NICK_STORE, JSON.stringify(nicks));
+      nicksChanged();
+    }
 
     // ---- The world ----
     // Every node has a fixed spot in world units (world_x / world_y, placed by
@@ -530,7 +576,7 @@
     function involvement(n) {
       const me = state.pet.trim().toLowerCase();
       if (!me) return { lead: false, rank: 0, found: false, any: false };
-      const is = name => !!name && name.toLowerCase() === me;
+      const is = name => !!name && (name.toLowerCase() === me || nickOf(name).toLowerCase() === me);
       const lead = !!n.champion && is(n.champion.name);
       const rank = (n.top5 || []).findIndex(r => is(r.name)) + 1;
       const found = !!n.rarest && is(n.rarest.by);
@@ -710,7 +756,7 @@
       const tip = $('tip'), b = n.boss || {};
       tip.replaceChildren(
         el('b', n.is_super ? 'super-text' : null, n.is_super ? '★ ' + superTitle(n) + ' · ' + n.name : n.name),
-        el('div', null, infected(n) ? 'Infected by ' + b.name : n.champion ? n.champion.name + ' · ' + kname(fkey(n)) : 'Open: no champion'),
+        el('div', null, infected(n) ? 'Infected by ' + b.name : n.champion ? petLabel(n.champion.name) + ' · ' + kname(fkey(n)) : 'Open: no champion'),
         el('div', 'muted', (b.name || 'Boss') + ' ' + pct(b.hp || 0, b.maxHp || 0) + ' HP'));
       tip.append(el('div', 'muted', 'Strength ' + ['▱▱▱', '▰▱▱', '▰▰▱', '▰▰▰'][pips(powers[i] || 0)] + ' · ' + terrainOf(n)));
       if (n.is_super) tip.append(el('div', 'super-text', '★ Super Gateway · ' + ringText(superRing(n))));
@@ -768,6 +814,7 @@
         for (const r of n.top5 || []) names.add(r.name);
         if (n.rarest) names.add(n.rarest.by);
       }
+      for (const v of [...names]) if (nickOf(v)) names.add(nickOf(v));
       $('pets').replaceChildren(...[...names].filter(Boolean).sort().map(v => { const o = el('option'); o.value = v; return o; }));
 
       const line = $('petline');
@@ -822,10 +869,11 @@
 
       if (infected(n)) {
         const from = n.boss.virus.from;
-        box.append(el('div', 'champ virus-text', '☣ Infected' + (from ? ': took over from ' + from : '')),
+        box.append(el('div', 'champ virus-text', '☣ Infected' + (from ? ': took over from ' + petLabel(from) : '')),
                    el('div', 'meta', `Nobody can claim it. Beat ${n.boss.name} once to cure it.`));
       } else if (n.champion) {
-        const c = n.champion, who = el('div', 'champ' + (inv.lead ? ' me' : ''), '⚔ ' + c.name);
+        const c = n.champion, who = el('div', 'champ' + (inv.lead ? ' me' : ''), '⚔ ');
+        who.append(petEl(c.name));
         if (inv.lead) who.append(' ', el('span', 'tag you', 'You'));
         box.append(who, el('div', 'meta', [c.faction || 'no faction', c.class, 'Lv ' + c.level].filter(Boolean).join(' · ')));
       } else {
@@ -845,7 +893,8 @@
         box.append(el('div', 'label', 'Top damage'));
         const ol = el('ol');
         n.top5.slice(0, 3).forEach((r, i) => {
-          const li = el('li', inv.rank === i + 1 ? 'me' : null), row = el('div', 'row'), who = el('span', 'who', r.name);
+          const li = el('li', inv.rank === i + 1 ? 'me' : null), row = el('div', 'row'), who = el('span', 'who');
+          who.append(petEl(r.name));
           if (r.faction) li.style.color = kcolor(r.faction);
           row.append(who, el('span', 'dmg', fmt(r.damage)));
           li.append(row);
@@ -853,7 +902,11 @@
         });
         box.append(ol);
       }
-      if (n.rarest) box.append(el('div', 'find' + (inv.found ? ' me' : ''), '🔍 ' + n.rarest.item + ' · ' + n.rarest.by));
+      if (n.rarest) {
+        const find = el('div', 'find' + (inv.found ? ' me' : ''), '🔍 ' + n.rarest.item + ' · ');
+        find.append(petEl(n.rarest.by));
+        box.append(find);
+      }
       return box;
     }
 
@@ -974,7 +1027,7 @@
       state.rows = prev;
       return r;
     };
-    const petLine = c => [c.name, c.faction || 'no faction', c.class && c.class !== 'None' ? c.class : '', 'Lv ' + c.level].filter(Boolean).join(' · ');
+    const petLine = c => [petLabel(c.name), c.faction || 'no faction', c.class && c.class !== 'None' ? c.class : '', 'Lv ' + c.level].filter(Boolean).join(' · ');
     function changes(before, after) {
       if (!before) return [];
       const old = new Map(before.map(n => [String(n.node_id), n])), out = [];
@@ -984,25 +1037,25 @@
         const c = n.champion, oc = o.champion, b = n.boss || {}, ob = o.boss || {};
         if (!infected(o) && infected(n)) {
           out.push({ n, kind: 'virus', icon: '☣', title: 'Infected', col: VIRUS_COLOR, big: false,
-                     lines: [`${b.name} took it${b.virus && b.virus.from ? ' from ' + b.virus.from : ''}`,
+                     lines: [`${b.name} took it${b.virus && b.virus.from ? ' from ' + petLabel(b.virus.from) : ''}`,
                              `Virus Lv ${b.level} · ${fmt(b.maxHp)} HP · beat it once to cure`] });
         } else if (infected(o) && !infected(n)) {
           const by = (n.top5 && n.top5[0]) || (o.top5 && o.top5[0]);
           out.push({ n, kind: 'cure', icon: '✚', title: 'Cured', col: '#7dffcf', big: false,
-                     lines: [by ? `Cured by ${by.name}${by.faction ? ' · ' + by.faction : ''}` : `${ob.name} is gone`, 'Open to claim again'] });
+                     lines: [by ? `Cured by ${petLabel(by.name)}${by.faction ? ' · ' + by.faction : ''}` : `${ob.name} is gone`, 'Open to claim again'] });
         } else if (c && !oc) {
           out.push({ n, kind: 'claim', icon: '⚑', title: n.is_super ? 'Super Gateway claimed' : 'Node claimed', col: kcolor(c.faction || UNALIGNED), big: !!n.is_super,
                      lines: [petLine(c), `Boss ${b.name || bossLabel(b)} Lv ${b.level} · ${pct(b.hp || 0, b.maxHp || 0)} HP`] });
         } else if (c && oc && c.name !== oc.name) {
           const flip = (c.faction || '') !== (oc.faction || '');
           out.push({ n, kind: 'flip', icon: '⚔', title: flip ? 'Changed hands' : 'New champion', col: kcolor(c.faction || UNALIGNED), big: flip || !!n.is_super,
-                     lines: [petLine(c), `Took it from ${oc.name}${flip && oc.faction ? ' (' + oc.faction + ')' : ''}`] });
+                     lines: [petLine(c), `Took it from ${petLabel(oc.name)}${flip && oc.faction ? ' (' + oc.faction + ')' : ''}`] });
         }
         if (!infected(n) && !infected(o) && (b.level || 1) > (ob.level || 1)) {
           const top = n.top5 && n.top5[0];
           out.push({ n, kind: 'boss', icon: n.is_super ? '★' : '👹', title: n.is_super ? 'Super Gateway boss down' : 'Boss defeated',
                      col: n.is_super ? SUPER_COLOR : '#ff7a59', big: !!n.is_super,
-                     lines: [`${ob.name || 'Boss'} Lv ${ob.level || 1} fell${top ? ' · top damage ' + top.name : ''}`,
+                     lines: [`${ob.name || 'Boss'} Lv ${ob.level || 1} fell${top ? ' · top damage ' + petLabel(top.name) : ''}`,
                              `Next: ${b.name || 'Boss'} Lv ${b.level} · ${fmt(b.maxHp || 0)} HP`] });
         }
         if (n.is_super) {
@@ -1362,8 +1415,8 @@
       return (rows || []).map(r => {
         const parts = String(r.day).split('-').map(Number);
         const when = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1);
-        const who = r.node_name + (r.pet_name ? ' · ' + r.pet_name : '');
-        return { when, type: r.kind || 'sync', who, what: EVENT_LABELS[r.kind] || r.kind, hasClock: false };
+        return { when, type: r.kind || 'sync', get who() { return r.node_name + (r.pet_name ? ' · ' + petLabel(r.pet_name) : ''); },
+                 what: EVENT_LABELS[r.kind] || r.kind, hasClock: false };
       });
     }
 
@@ -1443,10 +1496,10 @@
           wrap.append(head, ul);
         }
         const result = !v.ok ? 'refused' : v.won === true ? 'won' : v.won === false ? 'lost' : 'ok';
-        const li = el('li');
+        const li = el('li'), w = el('span', 'w');
+        w.append(v.pet_name ? petEl(v.pet_name) : '(unknown pet)', ` · ${v.action || '?'} · ${result}`);
         li.append(el('span', 't', when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })),
-                  el('span', 'k', v.node_name),
-                  el('span', 'w', `${v.pet_name || '(unknown pet)'} · ${v.action || '?'} · ${result}`));
+                  el('span', 'k', v.node_name), w);
         ul.append(li);
       }
       if (!rows.length) adminNote(adminState.visits.length ? 'No visits to that node.' : 'No visits logged yet.');
@@ -1491,6 +1544,26 @@
       };
       if ($('adminKey').value) loadAdmin();
     }
+
+    // ---- Nicknames: the list under the cards; redraw everything that shows names ----
+    function renderNicks() {
+      const names = Object.keys(nicks).sort((a, b) => nicks[a].localeCompare(nicks[b]));
+      if (!names.length) { $('nickList').replaceChildren(el('li', 'real', 'None yet.')); return; }
+      $('nickList').replaceChildren(...names.map(name => {
+        const li = el('li'), edit = el('button', 'act-retry', 'Rename'), del = el('button', 'act-retry', 'Remove');
+        edit.onclick = () => editNick(name);
+        del.onclick = () => setNick(name, '');
+        li.append(el('b', null, nicks[name]), el('span', 'real', name), edit, del);
+        return li;
+      }));
+    }
+    function nicksChanged() {
+      renderNicks();
+      if (zoneEls.length) applyState();
+      if (actState.events) renderActivity();
+      if (ADMIN && adminState.visits.length) renderAdmin();
+    }
+    renderNicks();
 
     // ---- Tabs ----
     const TAB_IDS = ['tab-board', 'tab-activity'];
