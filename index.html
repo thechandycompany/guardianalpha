@@ -28,6 +28,12 @@
     }
     .sub { text-align: center; font-size: 11px; color: var(--muted); letter-spacing: 1px; margin: 4px 0 16px; }
     .sub .err { color: #e0443e; }
+    .sub .link { background: none; border: none; padding: 0; color: var(--muted); text-decoration: underline; cursor: pointer; font: inherit; letter-spacing: inherit; }
+    /* The whole site is behind the admin key: until it's entered, only this */
+    .lock { max-width: 340px; margin: 60px auto; text-align: center; font-size: 13px; color: var(--muted); }
+    .lock form { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
+    .lock input { background: var(--card); border: 1px solid var(--line2); border-radius: 4px; color: var(--text); padding: 6px 10px; font-size: 13px; min-width: 0; flex: 1; }
+    .locked .tabs, .locked #panel-board, .locked #panel-activity { display: none !important; }
 
     /* ---- The map: the whole grid, fitted to the width ---- */
     .map-wrap { position: relative; border: 1px solid #1f5a78; border-radius: 6px; overflow: hidden; background: #05070d; }
@@ -251,7 +257,16 @@
 <body>
   <div class="page">
     <h1>The Grid</h1>
-    <div class="sub">Node leaderboards · closed alpha · <span id="status">loading…</span></div>
+    <div class="sub">Node leaderboards · closed alpha · <span id="status">loading…</span><span id="lockLinkWrap" hidden> · <button class="link" id="lockLink">lock</button></span></div>
+
+    <div class="lock" id="lock" hidden>
+      This page is private. Enter the admin key (it's kept in this browser).
+      <form id="lockForm">
+        <input id="lockKey" type="password" placeholder="admin key" autocomplete="off" aria-label="admin key">
+        <button class="act-retry" type="submit">Unlock</button>
+      </form>
+      <div class="act-note err" id="lockNote" hidden></div>
+    </div>
 
     <div class="tabs" role="tablist" aria-label="views">
       <button class="tab" id="tab-board" role="tab" aria-controls="panel-board" aria-selected="true" tabindex="0">Leaderboard</button>
@@ -286,7 +301,7 @@
 
     <div class="foot">
       The map is made up: a node's spot on it has nothing to do with where it really is.
-      Pets show here only by their generated names. Nothing anyone types, no uploaded pictures (pets show the game's own art), no locations,
+      Pets show here only by their generated names. Nothing anyone types, no locations,
       no accounts, and no cookies or tracking. Boards update when nodes report in.
       Dashed markers are virtual nodes: pets reach them over home Wi-Fi. Every night from 12 to 5am
       Pacific, a virus takes over a few of them (green); beat its boss once to cure one.
@@ -312,17 +327,15 @@
       <div class="act-note" id="actNote" hidden></div>
       <div id="actLogWrap"></div>
 
-      <!-- TEMP-VISIT-LOG (testing only, remove before GA): only with ?admin, and
-           rows only come back with the admin key (admin-visit-log function). -->
+      <!-- TEMP-VISIT-LOG (testing only, remove before GA): rows come from the
+           admin-visit-log function, with the site's admin key. -->
       <div class="act-admin" id="adminWrap" hidden>
         <h2>Visits (admin, temporary)</h2>
         <div class="act-cap">Exact times of pet visits to virtual nodes, from the private visit log.
-          Needs the admin key; it's kept in this browser only. Physical nodes aren't logged.</div>
+          Physical nodes aren't logged.</div>
         <div class="act-controls">
-          <input id="adminKey" type="password" placeholder="admin key" autocomplete="off" aria-label="admin key">
           <select id="adminNode" aria-label="node"><option value="">All nodes</option></select>
-          <button class="act-retry" id="adminLoad">Load</button>
-          <button class="act-retry" id="adminForget">Forget key</button>
+          <button class="act-retry" id="adminLoad">Refresh</button>
         </div>
         <div class="act-note" id="adminNote" hidden></div>
         <div id="adminLogWrap"></div>
@@ -331,9 +344,24 @@
   </div>
 
   <script>
-    // Public, read-only: the publishable key can only read visible boards (RLS).
+    // The whole site is behind the admin key (closed alpha): the boards, the
+    // pet pictures and the visit log come from functions that check it
+    // (admin-site, admin-visit-log; secret ADMIN_VISIT_LOG_KEY). It's kept in
+    // this browser only. ?demo needs no key (made-up data).
     const SUPABASE_URL = 'https://fkeiqvlwujxjlxaducge.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_JBw_SlIMnqg6k96ZsdqabQ_n50CMqfZ';
+    const ADMIN_KEY_STORE = 'vpetAdminKey';
+    const adminKey = () => localStorage.getItem(ADMIN_KEY_STORE) || '';
+    class LockedError extends Error {}
+    // GET a site function with the key. A wrong / missing key locks the page.
+    async function adminFetch(fn, query) {
+      const key = adminKey();
+      if (!key) { lockPage(''); throw new LockedError('locked'); }
+      const res = await fetch(SUPABASE_URL + '/functions/v1/' + fn + (query || ''), { headers: { 'x-admin-key': key }, cache: 'no-store' });
+      const out = await res.json().catch(() => ({}));
+      if (res.status === 401) { localStorage.removeItem(ADMIN_KEY_STORE); lockPage('Wrong key.'); throw new LockedError('locked'); }
+      if (!res.ok) throw new Error(out.error || 'HTTP ' + res.status);
+      return out;
+    }
 
     // Faction colors (virtpet/node_protocol.h order; TODO.md).
     const FACTION_COLORS = {
@@ -406,9 +434,14 @@
       }
       return artMap.has(name) ? artMap.get(name) : 0;
     }
+    // Checked-in pictures (pet-visit "profile", via admin-site): name -> crc, and
+    // name -> { crc, src } once fetched. They win over the art ID.
+    let picCrc = {};
+    const picCache = new Map();
+    const picSrc = name => { const p = picCache.get(name); return p && p.crc === picCrc[name] ? p.src : null; };
     function petImg(name, cls) {
       const img = el('img', cls || 'pa');
-      img.src = 'art/' + artOf(name) + '.png';
+      img.src = picSrc(name) || 'art/' + artOf(name) + '.png';
       img.alt = '';
       img.width = img.height = 64;
       img.decoding = 'async';
@@ -1202,16 +1235,55 @@
         setStatus('demo data (made up)');
         return;
       }
+      if (!adminKey()) { lockPage(''); return; }
       try {
-        const res = await fetch(SUPABASE_URL + '/rest/v1/node_state?select=node_id,name,map_x,map_y,world_x,world_y,champion,boss,top5,rarest,updated_day,is_virtual,is_super,title&order=name',
-                                { headers: { apikey: SUPABASE_KEY }, cache: 'no-store' });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        show(await res.json());
+        const out = await adminFetch('admin-site');
+        picCrc = out.pics || {};
+        // Pictures we don't have yet (or that changed) before drawing, so
+        // announcements show them. At most 100 names a request.
+        const want = Object.keys(picCrc).filter(n => !picSrc(n));
+        for (let i = 0; i < want.length; i += 100) {
+          const more = await adminFetch('admin-site', '?pics=' + encodeURIComponent(want.slice(i, i + 100).join('|')));
+          for (const [n, b64] of Object.entries(more.png || {})) picCache.set(n, { crc: picCrc[n], src: 'data:image/png;base64,' + b64 });
+        }
+        unlockPage();
+        show(out.nodes || []);
         setStatus('live · ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
       } catch (err) {
-        setStatus("couldn't load (" + err.message + ')', true);
+        if (!(err instanceof LockedError)) setStatus("couldn't load (" + err.message + ')', true);
       }
     }
+
+    // The lock screen.
+    function lockPage(why) {
+      document.body.classList.add('locked');
+      $('lock').hidden = false;
+      $('lockLinkWrap').hidden = true;
+      $('lockNote').textContent = why;
+      $('lockNote').hidden = !why;
+      setStatus('locked');
+      $('lockKey').focus();
+    }
+    function unlockPage() {
+      document.body.classList.remove('locked');
+      $('lock').hidden = true;
+      $('lockLinkWrap').hidden = false;
+    }
+    $('lockForm').onsubmit = e => {
+      e.preventDefault();
+      const key = $('lockKey').value.trim();
+      if (!key) return;
+      localStorage.setItem(ADMIN_KEY_STORE, key);
+      $('lockKey').value = '';
+      setStatus('loading…');
+      load();
+      if (state.tab === 'activity') loadActivity(true);
+      if (ADMIN) loadAdmin();
+    };
+    $('lockLink').onclick = () => {
+      localStorage.removeItem(ADMIN_KEY_STORE);
+      location.reload();
+    };
 
     // Something new every few seconds in the demo; every 20 s live (not while the tab is hidden).
     load();
@@ -1468,16 +1540,6 @@
       return out;
     }
 
-    // Map an activity_log row (option-b table, if it exists) to an Event.
-    function eventsFromActivityLog(rows) {
-      return (rows || []).map(r => {
-        const parts = String(r.day).split('-').map(Number);
-        const when = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1);
-        return { when, type: r.kind || 'sync', pet: r.pet_name || '', get who() { return r.node_name + (r.pet_name ? ' · ' + petLabel(r.pet_name) : ''); },
-                 what: EVENT_LABELS[r.kind] || r.kind, hasClock: false };
-      });
-    }
-
     // Demo activity: spread the demo nodes across the last two weeks so all
     // three granularities are visibly populated (clearly made-up data).
     function demoActivityEvents() {
@@ -1502,22 +1564,9 @@
       actState.loading = true; actState.error = false;
       if (!actState.events) renderActivity();
       try {
-        // Prefer the richer activity_log table if it exists and is readable.
-        let events = null;
-        try {
-          const r = await fetch(SUPABASE_URL + '/rest/v1/activity_log?select=day,kind,node_name,pet_name&order=day.desc&limit=2000',
-                                { headers: { apikey: SUPABASE_KEY }, cache: 'no-store' });
-          if (r.ok) { const rows = await r.json(); if (Array.isArray(rows) && rows.length) events = eventsFromActivityLog(rows); }
-          // 404 (no table) / 401 (not readable) / empty: fall through to node_state.
-        } catch (_) { /* ignore, fall back */ }
-
-        if (!events) {
-          const res = await fetch(SUPABASE_URL + '/rest/v1/node_state?select=node_id,name,updated_day,is_virtual,is_super,boss&order=updated_day.desc',
-                                  { headers: { apikey: SUPABASE_KEY }, cache: 'no-store' });
-          if (!res.ok) throw new Error('HTTP ' + res.status);
-          events = eventsFromNodeState(await res.json());
-        }
-        actState.events = events; actState.loaded = true; actState.error = false;
+        const rows = (await adminFetch('admin-site')).nodes || [];
+        rows.sort((a, b) => String(b.updated_day || '').localeCompare(String(a.updated_day || '')));
+        actState.events = eventsFromNodeState(rows); actState.loaded = true; actState.error = false;
       } catch (err) {
         actState.error = true;
         if (!actState.events) actState.events = null;
@@ -1528,8 +1577,7 @@
     }
 
     // ---- TEMP-VISIT-LOG (testing only, remove before GA): admin visit times ----
-    const ADMIN = SEARCH.has('admin');
-    const ADMIN_KEY_STORE = 'vpetAdminKey';
+    const ADMIN = !DEMO;   // the visit log is part of the (locked) site
     const adminState = { visits: [] };
     function adminNote(text, isErr) {
       const n = $('adminNote');
@@ -1564,14 +1612,10 @@
       else adminNote(`${rows.length} visit${rows.length === 1 ? '' : 's'} (newest first, times in ${LOCAL_TZ}).`);
     }
     async function loadAdmin() {
-      const key = $('adminKey').value.trim();
-      if (!key) { adminNote('Enter the admin key.', true); return; }
+      if (!adminKey()) return;
       adminNote('Loading visits…');
       try {
-        const res = await fetch(SUPABASE_URL + '/functions/v1/admin-visit-log?limit=1000', { headers: { 'x-admin-key': key }, cache: 'no-store' });
-        const out = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(res.status === 401 ? 'Wrong admin key.' : (out.error || 'HTTP ' + res.status));
-        localStorage.setItem(ADMIN_KEY_STORE, key);
+        const out = await adminFetch('admin-visit-log', '?limit=1000');
         adminState.visits = out.visits || [];
         // The node picker: every node in the log, by name.
         const sel = $('adminNode'), keep = sel.value;
@@ -1585,22 +1629,14 @@
         sel.value = nodes.has(keep) ? keep : '';
         renderAdmin();
       } catch (err) {
-        adminNote("Couldn't load visits: " + err.message, true);
+        if (!(err instanceof LockedError)) adminNote("Couldn't load visits: " + err.message, true);
       }
     }
     if (ADMIN) {
       $('adminWrap').hidden = false;
-      $('adminKey').value = localStorage.getItem(ADMIN_KEY_STORE) || '';
       $('adminLoad').onclick = loadAdmin;
       $('adminNode').onchange = renderAdmin;
-      $('adminForget').onclick = () => {
-        localStorage.removeItem(ADMIN_KEY_STORE);
-        $('adminKey').value = '';
-        adminState.visits = [];
-        $('adminLogWrap').replaceChildren();
-        adminNote('Key forgotten in this browser.');
-      };
-      if ($('adminKey').value) loadAdmin();
+      loadAdmin();
     }
 
     // ---- Nicknames: the list under the cards; redraw everything that shows names ----
