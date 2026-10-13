@@ -1248,6 +1248,12 @@
         }
         unlockPage();
         show(out.nodes || []);
+        // New pictures: everything else that shows pets (drawn before they came) too.
+        if (want.length) {
+          renderNicks();
+          if (actState.events) renderActivity();
+          if (ADMIN && adminState.visits.length) renderAdmin();
+        }
         setStatus('live · ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
       } catch (err) {
         if (!(err instanceof LockedError)) setStatus("couldn't load (" + err.message + ')', true);
@@ -1535,7 +1541,9 @@
         const when = new Date(parts[0], parts[1] - 1, parts[2]);   // local midnight of that date
         const tags = [n.is_super ? 'super' : n.is_virtual ? 'virtual' : null, (n.boss && n.boss.virus) ? 'infected' : null].filter(Boolean);
         const who = n.name + (tags.length ? ' (' + tags.join(', ') + ')' : '');
-        out.push({ when, type: 'sync', who, what: 'Board updated', hasClock: false });
+        // The node's champion (or, infected, the pet it took over from): its picture on the row.
+        const pet = (n.champion && n.champion.name) || (n.boss && n.boss.virus && n.boss.virus.from) || '';
+        out.push({ when, type: 'sync', get who() { return who + (pet ? ' · ' + petLabel(pet) : ''); }, pet, what: 'Board updated', hasClock: false });
       }
       return out;
     }
@@ -1549,7 +1557,8 @@
         const daysBack = i % 14;   // spread across the last 14 days
         const d = addDays(startOfLocalDay(new Date(now)), -daysBack);
         const tags = [n.is_super ? 'super' : n.is_virtual ? 'virtual' : null, (n.boss && n.boss.virus) ? 'infected' : null].filter(Boolean);
-        out.push({ when: d, type: 'sync', who: n.name + (tags.length ? ' (' + tags.join(', ') + ')' : ''), what: 'Board updated', hasClock: false });
+        const pet = (n.champion && n.champion.name) || '';
+        out.push({ when: d, type: 'sync', who: n.name + (tags.length ? ' (' + tags.join(', ') + ')' : '') + (pet ? ' · ' + pet : ''), pet, what: 'Board updated', hasClock: false });
       });
       return out;
     }
