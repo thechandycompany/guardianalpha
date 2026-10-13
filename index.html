@@ -61,7 +61,7 @@
 
     /* ---- Flash announcements: top right of the map when a node changes ---- */
     .toasts {
-      position: absolute; top: 10px; right: 10px; z-index: 3; width: min(320px, calc(100% - 20px));
+      position: absolute; top: 10px; right: 10px; z-index: 3; width: min(360px, calc(100% - 20px));
       display: flex; flex-direction: column; gap: 8px; pointer-events: none;
     }
     .toast {
@@ -98,7 +98,7 @@
     .burst { pointer-events: none; transform-box: fill-box; transform-origin: center; animation: burst 1.6s ease-out forwards; }
     @keyframes burst { from { transform: scale(0.2); opacity: 1; } to { transform: scale(2.6); opacity: 0; } }
     @media (prefers-reduced-motion: reduce) {
-      .toast, .toast.out, .toast::before, .toast .kind .ic, .confetti, .burst { animation: none !important; }
+      .toast, .toast.out, .toast::before, .toast .kind .ic, .toast .hero .big-ic, .confetti, .burst { animation: none !important; }
     }
 
     .tip {
@@ -175,6 +175,18 @@
     .pn { cursor: pointer; border-bottom: 1px dotted rgba(255, 255, 255, 0.3); }
     .pn:hover, .pn:focus-visible { border-bottom-color: var(--accent); outline: none; }
     .pn .real { color: var(--muted); font-size: 0.85em; }
+    /* Pet art (art/<id>.png, 64x64): a small one by every pet name, a big one in the tooltip */
+    .pa { width: 1.4em; height: 1.4em; vertical-align: -0.35em; margin-right: 4px; image-rendering: pixelated; background: #05070d; border-radius: 3px; }
+    .tip .pa-big { display: block; width: 64px; height: 64px; margin: 2px auto 4px; image-rendering: pixelated; background: #05070d; border: 1px solid var(--line2); border-radius: 4px; }
+    .toast { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 12px; }
+    .toast .hero { width: 74px; display: flex; flex-direction: column; align-items: center; text-align: center;
+                   font-size: 10px; line-height: 1.25; color: #fff; overflow-wrap: anywhere; }
+    .toast .hero img { width: 56px; height: 56px; margin-bottom: 4px; image-rendering: pixelated; background: #05070d;
+                       border: 1px solid var(--c); border-radius: 4px; box-shadow: 0 0 12px -3px var(--c); }
+    .toast .hero .real { color: var(--muted); }
+    .toast .hero .big-ic { font-size: 30px; line-height: 1; text-shadow: 0 0 12px var(--c); animation: pop 0.6s 0.2s cubic-bezier(.2, 2, .4, 1) both; }
+    .toast.big .hero { width: 82px; }
+    .toast.big .hero img { width: 64px; height: 64px; }
     .nicks { margin: 24px 0 0; }
     .nicks h2 { font-size: 14px; margin: 0 0 4px; color: #fff; }
     .nicks ul { list-style: none; margin: 0; padding: 0; font-size: 13px; }
@@ -274,7 +286,7 @@
 
     <div class="foot">
       The map is made up: a node's spot on it has nothing to do with where it really is.
-      Pets show here only by their generated names. Nothing anyone types, no pictures, no locations,
+      Pets show here only by their generated names. Nothing anyone types, no uploaded pictures (pets show the game's own art), no locations,
       no accounts, and no cookies or tracking. Boards update when nodes report in.
       Dashed markers are virtual nodes: pets reach them over home Wi-Fi. Every night from 12 to 5am
       Pacific, a virus takes over a few of them (green); beat its boss once to cure one.
@@ -374,6 +386,36 @@
     const hpFrac = n => (n.boss && n.boss.maxHp) ? n.boss.hp / n.boss.maxHp : 1;
     const swatch = k => { const s = el('i', 'sw'); s.style.setProperty('--c', kcolor(k)); return s; };
 
+    // Pet art: a pet's picture from the curated catalog in art/ (art/<id>.png,
+    // 64x64), by the art ID its board entry carries (champion.art, top5[].art,
+    // rarest.art). No ID yet (nothing sends one today) = art 0, the wolf. A pet
+    // without an ID of its own here takes the one it has elsewhere on the map.
+    const ART_COUNT = 2;   // art/0.png (wolf) .. art/1.png (cat)
+    const artId = v => Number.isInteger(v) && v >= 0 && v < ART_COUNT ? v : null;
+    let artRows = null, artMap = new Map();
+    function artOf(name) {
+      if (artRows !== state.rows) {
+        artRows = state.rows;
+        artMap = new Map();
+        const add = (nm, v) => { if (nm && artId(v) !== null && !artMap.has(nm)) artMap.set(nm, v); };
+        for (const n of state.rows) {
+          if (n.champion) add(n.champion.name, n.champion.art);
+          for (const r of n.top5 || []) add(r.name, r.art);
+          if (n.rarest) add(n.rarest.by, n.rarest.art);
+        }
+      }
+      return artMap.has(name) ? artMap.get(name) : 0;
+    }
+    function petImg(name, cls) {
+      const img = el('img', cls || 'pa');
+      img.src = 'art/' + artOf(name) + '.png';
+      img.alt = '';
+      img.width = img.height = 64;
+      img.decoding = 'async';
+      img.onerror = () => { img.hidden = true; };
+      return img;
+    }
+
     // Nicknames for pets ("Quirky Nomad #5770" -> "Dad's"), kept in this browser
     // only: the boards keep the generated names. petLabel() for plain text,
     // petEl() for a name you click to set one.
@@ -384,8 +426,9 @@
     const petLabel = name => nickOf(name) ? `${nickOf(name)} (${name})` : (name || '');
     function petEl(name) {
       const s = el('span', 'pn');
+      s.append(petImg(name));
       if (nickOf(name)) s.append(nickOf(name) + ' ', el('span', 'real', name));
-      else s.textContent = name;
+      else s.append(name);
       s.title = (nickOf(name) ? 'Change the' : 'Set a') + ' nickname for ' + name;
       s.tabIndex = 0;
       s.setAttribute('role', 'button');
@@ -754,7 +797,9 @@
       const i = state.rows.indexOf(n), d = dotEls[i].getBoundingClientRect(), w = $('wrap').getBoundingClientRect();
       const sx = d.left + d.width / 2 - w.left, sy = d.top + d.height / 2 - w.top, off = d.height / 2 + 6;
       const tip = $('tip'), b = n.boss || {};
-      tip.replaceChildren(
+      tip.replaceChildren();
+      if (n.champion && !infected(n)) tip.append(petImg(n.champion.name, 'pa-big'));
+      tip.append(
         el('b', n.is_super ? 'super-text' : null, n.is_super ? '★ ' + superTitle(n) + ' · ' + n.name : n.name),
         el('div', null, infected(n) ? 'Infected by ' + b.name : n.champion ? petLabel(n.champion.name) + ' · ' + kname(fkey(n)) : 'Open: no champion'),
         el('div', 'muted', (b.name || 'Boss') + ' ' + pct(b.hp || 0, b.maxHp || 0) + ' HP'));
@@ -979,7 +1024,7 @@
         const f = i % 12 === 5 ? null : factions[Math.floor(rnd() * (count > 12 ? 7 : 4))];   // a few empty nodes
         const champ = f === null ? null : {
           name: names[i % names.length] + ' #' + String(1000 + Math.floor(rnd() * 9000)),
-          faction: f, class: ['Scout', 'Hunter', 'Fighter'][i % 3], level: 3 + Math.floor(rnd() * 20),
+          faction: f, class: ['Scout', 'Hunter', 'Fighter'][i % 3], level: 3 + Math.floor(rnd() * 20), art: i % ART_COUNT,
         };
         const maxHp = 5000 + i * 300;
         return {
@@ -1027,7 +1072,7 @@
       state.rows = prev;
       return r;
     };
-    const petLine = c => [petLabel(c.name), c.faction || 'no faction', c.class && c.class !== 'None' ? c.class : '', 'Lv ' + c.level].filter(Boolean).join(' · ');
+    const petLine = c => [c.faction || 'no faction', c.class && c.class !== 'None' ? c.class : '', 'Lv ' + c.level].filter(Boolean).join(' · ');
     function changes(before, after) {
       if (!before) return [];
       const old = new Map(before.map(n => [String(n.node_id), n])), out = [];
@@ -1041,21 +1086,21 @@
                              `Virus Lv ${b.level} · ${fmt(b.maxHp)} HP · beat it once to cure`] });
         } else if (infected(o) && !infected(n)) {
           const by = (n.top5 && n.top5[0]) || (o.top5 && o.top5[0]);
-          out.push({ n, kind: 'cure', icon: '✚', title: 'Cured', col: '#7dffcf', big: false,
-                     lines: [by ? `Cured by ${petLabel(by.name)}${by.faction ? ' · ' + by.faction : ''}` : `${ob.name} is gone`, 'Open to claim again'] });
+          out.push({ n, pet: by ? by.name : '', note: 'cured it', kind: 'cure', icon: '✚', title: 'Cured', col: '#7dffcf', big: false,
+                     lines: [by ? `Beat ${ob.name || 'the virus'}${by.faction ? ' · ' + by.faction : ''}` : `${ob.name} is gone`, 'Open to claim again'] });
         } else if (c && !oc) {
-          out.push({ n, kind: 'claim', icon: '⚑', title: n.is_super ? 'Super Gateway claimed' : 'Node claimed', col: kcolor(c.faction || UNALIGNED), big: !!n.is_super,
+          out.push({ n, pet: c.name, kind: 'claim', icon: '⚑', title: n.is_super ? 'Super Gateway claimed' : 'Node claimed', col: kcolor(c.faction || UNALIGNED), big: !!n.is_super,
                      lines: [petLine(c), `Boss ${b.name || bossLabel(b)} Lv ${b.level} · ${pct(b.hp || 0, b.maxHp || 0)} HP`] });
         } else if (c && oc && c.name !== oc.name) {
           const flip = (c.faction || '') !== (oc.faction || '');
-          out.push({ n, kind: 'flip', icon: '⚔', title: flip ? 'Changed hands' : 'New champion', col: kcolor(c.faction || UNALIGNED), big: flip || !!n.is_super,
+          out.push({ n, pet: c.name, kind: 'flip', icon: '⚔', title: flip ? 'Changed hands' : 'New champion', col: kcolor(c.faction || UNALIGNED), big: flip || !!n.is_super,
                      lines: [petLine(c), `Took it from ${petLabel(oc.name)}${flip && oc.faction ? ' (' + oc.faction + ')' : ''}`] });
         }
         if (!infected(n) && !infected(o) && (b.level || 1) > (ob.level || 1)) {
           const top = n.top5 && n.top5[0];
-          out.push({ n, kind: 'boss', icon: n.is_super ? '★' : '👹', title: n.is_super ? 'Super Gateway boss down' : 'Boss defeated',
+          out.push({ n, pet: top ? top.name : '', note: 'top damage', kind: 'boss', icon: n.is_super ? '★' : '👹', title: n.is_super ? 'Super Gateway boss down' : 'Boss defeated',
                      col: n.is_super ? SUPER_COLOR : '#ff7a59', big: !!n.is_super,
-                     lines: [`${ob.name || 'Boss'} Lv ${ob.level || 1} fell${top ? ' · top damage ' + petLabel(top.name) : ''}`,
+                     lines: [`${ob.name || 'Boss'} Lv ${ob.level || 1} fell`,
                              `Next: ${b.name || 'Boss'} Lv ${b.level} · ${fmt(b.maxHp || 0)} HP`] });
         }
         if (n.is_super) {
@@ -1085,11 +1130,21 @@
       while (box.children.length >= MAX_TOASTS) box.firstChild.remove();
       const t = el('div', 'toast' + (e.big ? ' big' : '') + (e.kind === 'virus' ? ' virus' : ''));
       t.style.setProperty('--c', e.col);
-      const kind = el('div', 'kind');
-      kind.append(el('span', 'ic', e.icon), e.title);
-      t.append(kind);
-      if (e.n) t.append(el('div', 'where', e.n.is_super ? '★ ' + superTitle(e.n) + ' · ' + e.n.name : e.n.name));
-      e.lines.forEach(l => t.append(el('div', 'line', l)));
+      // Two columns: the pet (picture + name) or the big icon on the left, the details on the right.
+      const hero = el('div', 'hero'), body = el('div', 'body'), kind = el('div', 'kind');
+      if (e.pet) {
+        hero.append(petImg(e.pet, null), el('div', null, nickOf(e.pet) || e.pet));
+        if (nickOf(e.pet)) hero.append(el('div', 'real', e.pet));
+        if (e.note) hero.append(el('div', 'real', e.note));
+        kind.append(el('span', 'ic', e.icon));
+      } else {
+        hero.append(el('div', 'big-ic', e.icon));
+      }
+      kind.append(e.title);
+      body.append(kind);
+      if (e.n) body.append(el('div', 'where', e.n.is_super ? '★ ' + superTitle(e.n) + ' · ' + e.n.name : e.n.name));
+      e.lines.forEach(l => body.append(el('div', 'line', l)));
+      t.append(hero, body);
       const life = e.big ? 14000 : 9000, bar = el('div', 'bar');
       bar.style.animationDuration = life + 'ms';
       t.append(bar);
@@ -1171,7 +1226,7 @@
       const factions = Object.keys(FACTION_COLORS), classes = ['Scout', 'Hunter', 'Fighter'];
       const pet = () => ({ name: `${['Brave', 'Swift', 'Lucky', 'Mighty'][Math.floor(Math.random() * 4)]} Rookie #${String(1000 + Math.floor(Math.random() * 9000))}`,
                            faction: factions[Math.floor(Math.random() * factions.length)], class: classes[Math.floor(Math.random() * 3)],
-                           level: 5 + Math.floor(Math.random() * 90) });
+                           level: 5 + Math.floor(Math.random() * 90), art: Math.floor(Math.random() * ART_COUNT) });
       const r = Math.random();
       let n;
       if (r < 0.25 && (n = pick(x => !x.champion && !infected(x)))) n.champion = pet();
@@ -1387,7 +1442,10 @@
           const when = it.when instanceof Date ? it.when : new Date(it.when);
           const timeText = it.hasClock ? when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
             : when.toLocaleDateString([], { month: 'short', day: 'numeric' });
-          li.append(el('span', 't', timeText), el('span', 'k', EVENT_LABELS[it.type] || it.type), el('span', 'w', it.who));
+          const w = el('span', 'w');
+          if (it.pet) w.append(petImg(it.pet));
+          w.append(it.who);
+          li.append(el('span', 't', timeText), el('span', 'k', EVENT_LABELS[it.type] || it.type), w);
           ul.append(li);
         }
         wrap.append(head, ul);
@@ -1415,7 +1473,7 @@
       return (rows || []).map(r => {
         const parts = String(r.day).split('-').map(Number);
         const when = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1);
-        return { when, type: r.kind || 'sync', get who() { return r.node_name + (r.pet_name ? ' · ' + petLabel(r.pet_name) : ''); },
+        return { when, type: r.kind || 'sync', pet: r.pet_name || '', get who() { return r.node_name + (r.pet_name ? ' · ' + petLabel(r.pet_name) : ''); },
                  what: EVENT_LABELS[r.kind] || r.kind, hasClock: false };
       });
     }
@@ -1553,7 +1611,9 @@
         const li = el('li'), edit = el('button', 'act-retry', 'Rename'), del = el('button', 'act-retry', 'Remove');
         edit.onclick = () => editNick(name);
         del.onclick = () => setNick(name, '');
-        li.append(el('b', null, nicks[name]), el('span', 'real', name), edit, del);
+        const nm = el('b');
+        nm.append(petImg(name), nicks[name]);
+        li.append(nm, el('span', 'real', name), edit, del);
         return li;
       }));
     }
