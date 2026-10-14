@@ -316,9 +316,9 @@
     <div class="bar">
       <div class="legend" id="legend" role="group" aria-label="show one faction"></div>
       <div class="field">
-        <label for="pet">◆ Your pet</label>
+        <label for="pet">◆ Your Guardian</label>
         <input id="pet" list="pets" placeholder="Brave Defender #4821" autocomplete="off" spellcheck="false">
-        <button class="x" id="petClear" aria-label="clear your pet" hidden>✕</button>
+        <button class="x" id="petClear" aria-label="clear your Guardian" hidden>✕</button>
       </div>
       <datalist id="pets"></datalist>
     </div>
@@ -333,16 +333,16 @@
 
     <div class="nicks">
       <h2>Nicknames</h2>
-      <div class="act-cap">Click any pet's name to give it a nickname. They're kept in this browser only.</div>
+      <div class="act-cap">Click any Guardian's name to give it a nickname. They're kept in this browser only.</div>
       <ul id="nickList"></ul>
     </div>
 
     <div class="foot">
       The map is made up: a node's spot on it has nothing to do with where it really is.
-      Pets show here only by their generated names. Nothing anyone types, no locations,
+      Guardians show here only by their generated names. Nothing anyone types, no locations,
       no accounts, and no cookies or tracking. Boards update when nodes report in.
-      Dashed markers are virtual nodes: pets reach them over home Wi-Fi. Every night from 12 to 5am
-      Pacific, a virus takes over a few of them (green); beat its boss once to cure one.
+      Dashed markers are virtual nodes: Guardians reach them over home Wi-Fi. Every night from 12 to 5am
+      Pacific, an infection takes over a few of them (green); beat its virus boss once to clean it out.
       Gold stars in marching gold frames are the Super Gateways (North, East, South and West), with how much of the ring a faction holds. They open only to a faction whose champions hold all 8 nodes around one.
       Their bosses are much tougher and their finds much rarer, and beating one infects all 8 nodes around it.
       Stronger nodes (champion level plus boss level) have brighter tiles and bigger, brighter markers, with up to 3 pips.
@@ -369,7 +369,7 @@
            admin-visit-log function, with the site's admin key. -->
       <div class="act-admin" id="adminWrap" hidden>
         <h2>Visits (admin, temporary)</h2>
-        <div class="act-cap">Exact times of pet visits to virtual nodes, from the private visit log.
+        <div class="act-cap">Exact times of Guardian visits to virtual nodes, from the private visit log.
           Physical nodes aren't logged.</div>
         <div class="act-controls">
           <select id="adminNode" aria-label="node"><option value="">All nodes</option></select>
@@ -996,7 +996,7 @@
       }
       line.hidden = false;
       if (!lead && !boards && !state.rows.some(n => involvement(n).any)) {
-        line.textContent = `"${state.pet.trim()}" isn't on any board today. Use the exact name on your pet's screen.`;
+        line.textContent = `"${state.pet.trim()}" isn't on any board today. Use the exact name on your device's screen.`;
         return;
       }
       line.replaceChildren(el('b', null, '◆ ' + lead), ` node${lead === 1 ? '' : 's'} led · `,
@@ -1219,10 +1219,10 @@
         if (!infected(o) && infected(n)) {
           out.push({ n, kind: 'virus', icon: '☣', title: 'Infected', col: VIRUS_COLOR, big: false,
                      lines: [`${b.name} took it${b.virus && b.virus.from ? ' from ' + petLabel(b.virus.from) : ''}`,
-                             `Virus Lv ${b.level} · ${fmt(b.maxHp)} HP · beat it once to cure`] });
+                             `Virus Lv ${b.level} · ${fmt(b.maxHp)} HP · beat it once to clean it out`] });
         } else if (infected(o) && !infected(n)) {
           const by = (n.top5 && n.top5[0]) || (o.top5 && o.top5[0]);
-          out.push({ n, pet: by ? by.name : '', note: 'cured it', kind: 'cure', icon: '✚', title: 'Cured', col: '#7dffcf', big: false,
+          out.push({ n, pet: by ? by.name : '', note: 'cleaned it out', kind: 'cure', icon: '✚', title: 'Cleansed', col: '#7dffcf', big: false,
                      lines: [by ? `Beat ${ob.name || 'the virus'}${by.faction ? ' · ' + by.faction : ''}` : `${ob.name} is gone`, 'Open to claim again'] });
         } else if (c && !oc) {
           out.push({ n, pet: c.name, kind: 'claim', icon: '⚑', title: n.is_super ? 'Super Gateway claimed' : 'Node claimed', col: kcolor(c.faction || UNALIGNED), big: !!n.is_super,
@@ -1243,7 +1243,7 @@
           const was = ringIn(before, o).holder, now = ringIn(after, n);
           if (!was && now.holder) {
             out.push({ n, kind: 'gate', icon: '★', title: 'Super Gateway opened', col: SUPER_COLOR, big: true,
-                       lines: [`${now.holder} hold all 8 around ${superTitle(n)}`, `Only ${now.holder} pets can enter · boss Lv ${b.level}`] });
+                       lines: [`${now.holder} hold all 8 around ${superTitle(n)}`, `Only ${now.holder} Guardians can enter · boss Lv ${b.level}`] });
           } else if (was && !now.holder) {
             out.push({ n, kind: 'gate', icon: '🔒', title: 'Super Gateway sealed', col: SUPER_COLOR, big: false,
                        lines: [`${was} lost the ring around ${superTitle(n)}`, now.have ? `${now.lead} hold ${now.have}/8` : 'Nobody holds the ring'] });
@@ -1524,7 +1524,7 @@
     // ---- Activity state + rendering ----
     const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time';
     const actState = { gran: 'day', events: null, loaded: false, loading: false, error: false, typeFilter: null, started: false };
-    const EVENT_LABELS = { sync: 'Board updated', champion: 'New champion', infected: 'Infected', cured: 'Cured' };
+    const EVENT_LABELS = { sync: 'Board updated', champion: 'New champion', infected: 'Infected', cured: 'Cleansed' };
 
     // Window caption per granularity. The source records activity by day, so the
     // smallest view is Day (the note by the filter explains why Hour is absent).
@@ -1715,7 +1715,7 @@
         }
         const result = !v.ok ? 'refused' : v.won === true ? 'won' : v.won === false ? 'lost' : 'ok';
         const li = el('li'), w = el('span', 'w');
-        w.append(v.pet_name ? petEl(v.pet_name) : '(unknown pet)', ` · ${v.action || '?'} · ${result}`);
+        w.append(v.pet_name ? petEl(v.pet_name) : '(unknown Guardian)', ` · ${v.action || '?'} · ${result}`);
         li.append(el('span', 't', when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })),
                   el('span', 'k', v.node_name), w);
         ul.append(li);
