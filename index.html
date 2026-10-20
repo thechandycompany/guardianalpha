@@ -33,7 +33,18 @@
     .lock { max-width: 340px; margin: 60px auto; text-align: center; font-size: 13px; color: var(--muted); }
     .lock form { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
     .lock input { background: var(--card); border: 1px solid var(--line2); border-radius: 4px; color: var(--text); padding: 6px 10px; font-size: 13px; min-width: 0; flex: 1; }
-    .locked .tabs, .locked #panel-board, .locked #panel-activity { display: none !important; }
+    .locked .tabs, .locked #panel-board, .locked #panel-activity, .locked #panel-members { display: none !important; }
+    .lock .signin, .lock .signin-providers { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
+    .lock .or { margin-top: 18px; font-size: 11px; }
+    /* ---- Members panel (admin-accounts) ---- */
+    .mem-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 4px 0 12px; font-size: 12px; color: var(--muted); }
+    .mem-controls input { background: var(--card); border: 1px solid var(--line2); border-radius: 4px; color: var(--text); padding: 3px 8px; width: 70px; }
+    .mem-link { font-size: 12px; word-break: break-all; background: var(--card); border: 1px solid var(--line2); border-radius: 4px; padding: 8px 10px; margin: 0 0 12px; }
+    .mem-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .mem-table th, .mem-table td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .mem-table th { color: var(--muted); font-weight: normal; letter-spacing: 1px; text-transform: uppercase; font-size: 11px; }
+    .mem-table .act-retry { margin: 0 4px 0 0; padding: 2px 8px; }
+    .mem-log { list-style: none; padding: 0; margin: 8px 0 0; font-size: 12px; color: var(--muted); }
 
     /* ---- The map: the whole grid, fitted to the width ---- */
     .map-wrap { position: relative; border: 1px solid #1f5a78; border-radius: 6px; overflow: hidden; background: #05070d; }
@@ -286,6 +297,8 @@
       .act-log li .t { min-width: 60px; }
     }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="auth.js"></script>
 </head>
 <body>
   <div class="page">
@@ -293,7 +306,9 @@
     <div class="sub">Node leaderboards · closed alpha · <span id="status">loading…</span><span id="lockLinkWrap" hidden> · <button class="link" id="lockLink">lock</button></span></div>
 
     <div class="lock" id="lock" hidden>
-      This page is private. Enter the admin key (it's kept in this browser).
+      This page is private. Sign in as an admin.
+      <div id="lockSignin"></div>
+      <div class="or">or enter the admin key (kept in this browser):</div>
       <form id="lockForm">
         <input id="lockKey" type="password" placeholder="admin key" autocomplete="off" aria-label="admin key">
         <button class="act-retry" type="submit">Unlock</button>
@@ -304,6 +319,7 @@
     <div class="tabs" role="tablist" aria-label="views">
       <button class="tab" id="tab-board" role="tab" aria-controls="panel-board" aria-selected="true" tabindex="0">Leaderboard</button>
       <button class="tab" id="tab-activity" role="tab" aria-controls="panel-activity" aria-selected="false" tabindex="-1">Activity log</button>
+      <button class="tab" id="tab-members" role="tab" aria-controls="panel-members" aria-selected="false" tabindex="-1">Members</button>
     </div>
 
     <div id="panel-board" role="tabpanel" aria-labelledby="tab-board" tabindex="0">
@@ -379,6 +395,28 @@
         <div id="adminLogWrap"></div>
       </div>
     </div><!-- /panel-activity -->
+
+    <!-- Members: the alpha's accounts, its join link and seat cap
+         (admin-accounts). Changes need a signed-in admin, not the key. -->
+    <div id="panel-members" role="tabpanel" aria-labelledby="tab-members" tabindex="0" hidden>
+      <div class="mem-controls">
+        <span id="memSeats">seats: …</span>
+        <span id="memJoining"></span>
+        <button class="act-retry" id="memRotate">New join link</button>
+        <button class="act-retry" id="memClose">Close joining</button>
+        <label>seat cap <input id="memCap" type="number" min="0" max="10000"></label>
+        <button class="act-retry" id="memCapSave">Save cap</button>
+        <button class="act-retry" id="memRefresh">Refresh</button>
+      </div>
+      <div class="mem-link" id="memLink" hidden></div>
+      <div class="act-note" id="memNote" hidden></div>
+      <table class="mem-table">
+        <thead><tr><th>Account</th><th>Signs in with</th><th>Age screen</th><th>Alpha</th><th>Since</th><th></th></tr></thead>
+        <tbody id="memRows"></tbody>
+      </table>
+      <div class="act-note">Admin log</div>
+      <ul class="mem-log" id="memLog"></ul>
+    </div><!-- /panel-members -->
   </div>
 
   <script>
@@ -386,17 +424,28 @@
     // pet pictures and the visit log come from functions that check it
     // (admin-site, admin-visit-log; secret ADMIN_VISIT_LOG_KEY). It's kept in
     // this browser only. ?demo needs no key (made-up data).
-    const SUPABASE_URL = 'https://fkeiqvlwujxjlxaducge.supabase.co';
+    const SUPABASE_URL = vpetAuth.SUPABASE_URL;
     const ADMIN_KEY_STORE = 'vpetAdminKey';
     const adminKey = () => localStorage.getItem(ADMIN_KEY_STORE) || '';
+    // Signed in (an admin account: site/auth.js), or the old key.
+    const canTry = () => !!(vpetAuth.session() || adminKey());
     class LockedError extends Error {}
-    // GET a site function with the key. A wrong / missing key locks the page.
-    async function adminFetch(fn, query) {
-      const key = adminKey();
-      if (!key) { lockPage(''); throw new LockedError('locked'); }
-      const res = await fetch(SUPABASE_URL + '/functions/v1/' + fn + (query || ''), { headers: { 'x-admin-key': key }, cache: 'no-store' });
+    // Call a site function as the signed-in admin, else with the key. Not an
+    // admin / a wrong key locks the page.
+    async function adminFetch(fn, query, opts) {
+      if (!canTry()) { lockPage(''); throw new LockedError('locked'); }
+      const headers = vpetAuth.session() ? { Authorization: 'Bearer ' + vpetAuth.session().access_token } : { 'x-admin-key': adminKey() };
+      if (opts && opts.body !== undefined) headers['Content-Type'] = 'application/json';
+      const res = await fetch(SUPABASE_URL + '/functions/v1/' + fn + (query || ''), {
+        method: (opts && opts.method) || 'GET', headers, cache: 'no-store',
+        body: opts && opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      });
       const out = await res.json().catch(() => ({}));
-      if (res.status === 401) { localStorage.removeItem(ADMIN_KEY_STORE); lockPage('Wrong key.'); throw new LockedError('locked'); }
+      if (res.status === 401) {
+        if (vpetAuth.session()) lockPage(vpetAuth.email() + " isn't an admin.");
+        else { localStorage.removeItem(ADMIN_KEY_STORE); lockPage('Wrong key.'); }
+        throw new LockedError('locked');
+      }
       if (!res.ok) throw new Error(out.error || 'HTTP ' + res.status);
       return out;
     }
@@ -676,13 +725,13 @@
     const HASH = new URLSearchParams(RAW_HASH === 'activity' ? 'tab=activity' : RAW_HASH);
     const state = {
       rows: [], faction: HASH.get('f'), pet: HASH.get('pet') || '', node: HASH.get('node'),
-      tab: HASH.get('tab') === 'activity' ? 'activity' : 'board',
+      tab: ['activity', 'members'].includes(HASH.get('tab')) ? HASH.get('tab') : 'board',
     };
     let zoneEls = [], dotEls = [], cardEls = [];
 
     function writeHash() {
       const p = new URLSearchParams();
-      if (state.tab === 'activity') p.set('tab', 'activity');
+      if (state.tab !== 'board') p.set('tab', state.tab);
       if (state.faction !== null) p.set('f', state.faction);
       if (state.pet.trim()) p.set('pet', state.pet.trim());
       if (state.node !== null) p.set('node', state.node);
@@ -1338,7 +1387,7 @@
         setStatus('demo data (made up)');
         return;
       }
-      if (!adminKey()) { lockPage(''); return; }
+      if (!canTry()) { lockPage(''); return; }
       try {
         const out = await adminFetch('admin-site');
         picCrc = out.pics || {};
@@ -1371,7 +1420,11 @@
       $('lockNote').textContent = why;
       $('lockNote').hidden = !why;
       setStatus('locked');
-      $('lockKey').focus();
+      vpetAuth.renderSignIn($('lockSignin'), (text, isError) => {
+        $('lockNote').textContent = text;
+        $('lockNote').hidden = !text;
+        $('lockNote').classList.toggle('err', !!isError);
+      });
     }
     function unlockPage() {
       document.body.classList.remove('locked');
@@ -1389,13 +1442,15 @@
       if (state.tab === 'activity') loadActivity(true);
       if (ADMIN) loadAdmin();
     };
-    $('lockLink').onclick = () => {
+    $('lockLink').onclick = async () => {
       localStorage.removeItem(ADMIN_KEY_STORE);
+      await vpetAuth.signOut();
       location.reload();
     };
 
     // Something new every few seconds in the demo; every 20 s live (not while the tab is hidden).
-    load();
+    vpetAuth.ready.then(() => load());
+    vpetAuth.onChange(() => { load(); if (state.tab === 'activity') loadActivity(true); if (ADMIN) loadAdmin(); if (state.tab === 'members') loadMembers(); });
     setInterval(() => { if (!document.hidden) load(); }, DEMO ? 6000 : 20 * 1000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
 
@@ -1724,7 +1779,7 @@
       else adminNote(`${rows.length} visit${rows.length === 1 ? '' : 's'} (newest first, times in ${LOCAL_TZ}).`);
     }
     async function loadAdmin() {
-      if (!adminKey()) return;
+      if (!canTry()) return;
       adminNote('Loading visits…');
       try {
         const out = await adminFetch('admin-visit-log', '?limit=1000');
@@ -1774,10 +1829,11 @@
     renderNicks();
 
     // ---- Tabs ----
-    const TAB_IDS = ['tab-board', 'tab-activity'];
+    const TAB_IDS = ['tab-board', 'tab-activity', 'tab-members'];
+    const TABS = ['board', 'activity', 'members'];
     function selectTab(which, focus) {
       state.tab = which;
-      const activeId = which === 'activity' ? 'tab-activity' : 'tab-board';
+      const activeId = TAB_IDS[TABS.indexOf(which)];
       for (const id of TAB_IDS) {
         const t = $(id), on = id === activeId;
         t.setAttribute('aria-selected', String(on));
@@ -1786,8 +1842,10 @@
       }
       $('panel-board').hidden = which !== 'board';
       $('panel-activity').hidden = which !== 'activity';
+      $('panel-members').hidden = which !== 'members';
       writeHash();
-      if (which === 'activity') {
+      if (which === 'members') loadMembers();
+      else if (which === 'activity') {
         if (!actState.started) { actState.started = true; loadActivity(); }
         else renderActivity();
       } else {
@@ -1806,13 +1864,15 @@
       else if (e.key === 'End') j = TAB_IDS.length - 1;
       if (j < 0) return;
       e.preventDefault();
-      selectTab(j === 1 ? 'activity' : 'board', true);
+      selectTab(TABS[j], true);
     }
 
     $('tab-board').onclick = () => selectTab('board', false);
     $('tab-activity').onclick = () => selectTab('activity', false);
     $('tab-board').addEventListener('keydown', onTabKey);
     $('tab-activity').addEventListener('keydown', onTabKey);
+    $('tab-members').onclick = () => selectTab('members', false);
+    $('tab-members').addEventListener('keydown', onTabKey);
 
     function setGran(g) {
       actState.gran = g;
@@ -1830,6 +1890,78 @@
 
     // Demo-only: preset the granularity via ?gran=day|week, for screenshots.
     if (DEMO && ['day', 'week'].includes(SEARCH.get('gran'))) setGran(SEARCH.get('gran'));
+
+    // ---- Members (admin-accounts) ----
+    // The join link is shown once, when it's made (only its hash is kept).
+    const JOIN_PAGE = new URL('join.html', location.href).href.split('#')[0].split('?')[0];
+    const memState = { accounts: [], settings: null };
+    function memNote(text, isError) {
+      $('memNote').textContent = text || '';
+      $('memNote').hidden = !text;
+      $('memNote').classList.toggle('err', !!isError);
+    }
+    async function memDo(body, done) {
+      try {
+        const out = await adminFetch('admin-accounts', '', { method: 'POST', body });
+        if (done) done(out);
+        await loadMembers();
+      } catch (err) {
+        if (!(err instanceof LockedError)) memNote(err.message === 'sign in to change things' ? 'Sign in as an admin to change things (the key is read-only).' : "Couldn't: " + err.message, true);
+      }
+    }
+    function renderMembers() {
+      const st = memState.settings;
+      $('memSeats').textContent = st ? `seats: ${st.seats_used} of ${st.seat_cap}` : 'seats: …';
+      $('memJoining').textContent = st ? (st.joining ? 'joining: open' : 'joining: closed') : '';
+      if (st && document.activeElement !== $('memCap')) $('memCap').value = st.seat_cap;
+      const body = $('memRows');
+      body.replaceChildren();
+      for (const a of memState.accounts) {
+        const tr = el('tr');
+        const age = a.adult === null ? 'not yet' : a.adult ? '18+ (' + a.age_day + ')' : 'under 18 (' + a.age_day + ')';
+        const alpha = a.revoked ? 'revoked' : a.member ? 'member' : 'not joined';
+        const acts = el('td');
+        const btn = (text, op) => {
+          const b = el('button', 'act-retry', text);
+          b.onclick = () => memDo({ op, user_id: a.user_id });
+          acts.append(b);
+        };
+        if (a.revoked) btn('Restore', 'restore');
+        else if (!a.is_admin) btn('Revoke', 'revoke');
+        if (a.adult !== null) btn('Reset age', 'reset_age');
+        tr.append(el('td', null, (a.email || a.user_id) + (a.is_admin ? ' · admin' : '')), el('td', null, (a.providers || []).join(', ') || 'email'),
+          el('td', null, age), el('td', null, alpha), el('td', null, a.joined_day || a.created_day), acts);
+        body.append(tr);
+      }
+      if (!memState.accounts.length) body.append(Object.assign(el('tr'), { innerHTML: '<td colspan="6">No accounts yet.</td>' }));
+      const who = new Map(memState.accounts.map(a => [a.user_id, a.email]));
+      $('memLog').replaceChildren(...(memState.actions || []).map(x => el('li', null,
+        `${new Date(x.at).toLocaleString()} · ${who.get(x.admin) || 'admin'} · ${x.action}${x.target ? ' · ' + (who.get(x.target) || x.target) : ''}${x.detail ? ' · ' + x.detail : ''}`)));
+    }
+    async function loadMembers() {
+      if (DEMO || !canTry()) return;
+      try {
+        const out = await adminFetch('admin-accounts');
+        memState.accounts = out.accounts || [];
+        memState.settings = out.settings || null;
+        memState.actions = out.actions || [];
+        renderMembers();
+      } catch (err) {
+        if (!(err instanceof LockedError)) memNote("Couldn't load members: " + err.message, true);
+      }
+    }
+    $('memRotate').onclick = () => {
+      if (memState.settings && memState.settings.joining && !confirm('Make a new join link? The old one stops working (members stay members).')) return;
+      memDo({ op: 'rotate_link' }, out => {
+        const link = JOIN_PAGE + '#t=' + out.token;
+        $('memLink').hidden = false;
+        $('memLink').textContent = 'New join link (shown once, copy it now): ' + link;
+        navigator.clipboard?.writeText(link).then(() => memNote('Copied the join link.'), () => {});
+      });
+    };
+    $('memClose').onclick = () => { if (confirm('Close joining? The current link stops working.')) memDo({ op: 'close_link' }, () => { $('memLink').hidden = true; }); };
+    $('memCapSave').onclick = () => memDo({ op: 'set_cap', seat_cap: parseInt($('memCap').value, 10) }, () => memNote('Saved the seat cap.'));
+    $('memRefresh').onclick = () => loadMembers();
 
     // Open the right tab on load (survives refresh via the URL hash).
     selectTab(state.tab, false);

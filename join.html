@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Closed alpha: keep it out of search engines. -->
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Join the alpha · virtpet</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Cpolygon points=%228,1 15,8 8,15 1,8%22 fill=%22%2338d6e8%22/%3E%3C/svg%3E">
+  <style>
+    :root { --bg: #07090f; --card: #0b0f18; --line2: #2a3850; --text: #d8e3ef; --muted: #7d8ba0; --accent: #38d6e8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, 'Courier New', monospace; }
+    button, input { font: inherit; color: inherit; }
+    [hidden] { display: none !important; }
+    .page { max-width: 420px; margin: 0 auto; padding: 40px 16px; text-align: center; }
+    h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: 6px; text-transform: uppercase; color: var(--accent); text-shadow: 0 0 12px rgba(56, 214, 232, 0.45); }
+    .sub { font-size: 11px; color: var(--muted); letter-spacing: 1px; margin-bottom: 28px; }
+    .step { font-size: 13px; color: var(--muted); }
+    .step p { margin: 0 0 12px; }
+    .step strong { color: var(--text); }
+    form, .signin-providers { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
+    input { background: var(--card); border: 1px solid var(--line2); border-radius: 4px; padding: 6px 10px; font-size: 13px; min-width: 0; flex: 1; color-scheme: dark; }
+    .act-retry { background: var(--card); border: 1px solid var(--line2); border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px; }
+    .act-retry:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .note { margin-top: 14px; font-size: 12px; color: var(--muted); }
+    .note.err { color: #e0443e; }
+    .who { margin-top: 28px; font-size: 11px; color: var(--muted); }
+    .who button { background: none; border: none; padding: 0; color: var(--muted); text-decoration: underline; cursor: pointer; font-size: 11px; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="auth.js"></script>
+</head>
+<body>
+  <div class="page">
+    <h1>virtpet</h1>
+    <div class="sub">closed alpha</div>
+
+    <div class="step" id="signin" hidden>
+      <p>Sign in to join the alpha.</p>
+      <div id="signinBox"></div>
+    </div>
+
+    <!-- The age screen: neutral on purpose (no hint of the answer that gets in). -->
+    <div class="step" id="age" hidden>
+      <p>What's your date of birth?</p>
+      <form id="ageForm">
+        <input id="ageDate" type="date" required aria-label="date of birth" min="1900-01-01">
+        <button class="act-retry" type="submit">Continue</button>
+      </form>
+    </div>
+
+    <div class="step" id="done" hidden></div>
+
+    <div class="note" id="note" hidden></div>
+    <div class="who" id="who" hidden><span id="whoEmail"></span> · <button id="signOut">sign out</button></div>
+  </div>
+
+  <script>
+    // The join flow (plan: .agents/tasks/online-boards-and-registration/plan.md):
+    // sign in -> the age screen (once) -> the join link's token -> a member.
+    // The token arrives in the link's hash (#t=..., never sent to a server
+    // until we post it) and is kept in this browser until it's used, so it
+    // survives the trip out to the sign-in email and back.
+    const $ = id => document.getElementById(id);
+    const TOKEN_STORE = 'vpetJoinToken';
+    const hashToken = new URLSearchParams(location.hash.slice(1)).get('t');
+    if (hashToken) {
+      localStorage.setItem(TOKEN_STORE, hashToken);
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+
+    function note(text, isError) {
+      $('note').textContent = text || '';
+      $('note').hidden = !text;
+      $('note').classList.toggle('err', !!isError);
+    }
+    function show(step, text) {
+      for (const id of ['signin', 'age', 'done']) $(id).hidden = id !== step;
+      if (step === 'done') $('done').textContent = text;
+    }
+
+    async function refresh() {
+      const s = vpetAuth.session();
+      $('who').hidden = !s;
+      $('whoEmail').textContent = vpetAuth.email();
+      if (!s) {
+        vpetAuth.renderSignIn($('signinBox'), note);
+        show('signin');
+        return;
+      }
+      const { ok, out } = await vpetAuth.call('account');
+      if (!ok) { show('done', ''); note("Couldn't load your account: " + (out.error || 'try again'), true); return; }
+      const a = out.account;
+      if (a.revoked) return show('done', 'Your alpha access was turned off. Ask the admin if that seems wrong.');
+      if (a.adult === null) return show('age');
+      if (!a.adult) return show('done', "Sorry, you can't join the alpha.");
+      if (a.member) {
+        localStorage.removeItem(TOKEN_STORE);
+        return show('done', "You're in the alpha. Linking your Guardian comes next; you'll get a note when it's ready.");
+      }
+      const token = localStorage.getItem(TOKEN_STORE);
+      if (!token) return show('done', 'Open the invite link you were sent to join.');
+      const res = await vpetAuth.call('account', { method: 'POST', body: { op: 'join', token } });
+      if (res.ok) { localStorage.removeItem(TOKEN_STORE); return refresh(); }
+      const why = {
+        'bad link': "That invite link doesn't work any more. Ask for the new one.",
+        off: 'Joining is closed right now.',
+        full: 'The alpha is full right now.',
+      }[res.out.error];
+      if (res.out.error === 'bad link') localStorage.removeItem(TOKEN_STORE);
+      show('done', why || "Couldn't join: " + (res.out.error || 'try again'));
+    }
+
+    $('ageDate').max = new Date().toISOString().slice(0, 10);
+    $('ageForm').onsubmit = async e => {
+      e.preventDefault();
+      const res = await vpetAuth.call('account', { method: 'POST', body: { op: 'age', birthdate: $('ageDate').value } });
+      if (!res.ok) { note("That date didn't work: " + (res.out.error || 'try again'), true); return; }
+      note('');
+      refresh();
+    };
+    $('signOut').onclick = async () => { await vpetAuth.signOut(); note(''); refresh(); };
+    vpetAuth.onChange(() => refresh());
+    vpetAuth.ready.then(refresh);
+  </script>
+</body>
+</html>
