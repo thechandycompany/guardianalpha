@@ -1,0 +1,34 @@
+[
+ {
+  "id": "cat",
+  "name": "Cat"
+ },
+ {
+  "id": "ferret",
+  "name": "Ferret"
+ },
+ {
+  "id": "gorilla",
+  "name": "Gorilla"
+ },
+ {
+  "id": "monkey",
+  "name": "Monkey"
+ },
+ {
+  "id": "penguin",
+  "name": "Penguin"
+ },
+ {
+  "id": "phoenix",
+  "name": "Phoenix"
+ },
+ {
+  "id": "shark",
+  "name": "Shark"
+ },
+ {
+  "id": "wolf",
+  "name": "Wolf"
+ }
+]

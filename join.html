@@ -28,6 +28,17 @@
     .note.err { color: #e0443e; }
     .who { margin-top: 28px; font-size: 11px; color: var(--muted); }
     .who button { background: none; border: none; padding: 0; color: var(--muted); text-decoration: underline; cursor: pointer; font-size: 11px; }
+    /* ---- Guardians (account "link" / "relink") ---- */
+    .g-box { margin-top: 20px; padding: 12px; background: var(--card); border: 1px solid var(--line2); border-radius: 4px; text-align: left; }
+    .g-box h2 { margin: 0 0 6px; font-size: 12px; font-weight: normal; letter-spacing: 2px; text-transform: uppercase; color: var(--text); }
+    .g-box p { margin: 0 0 4px; }
+    .g-code { text-transform: uppercase; letter-spacing: 2px; }
+    .mem-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+    .mem-table th, .mem-table td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line2); vertical-align: top; }
+    .mem-table th { color: var(--muted); font-weight: normal; letter-spacing: 1px; text-transform: uppercase; font-size: 11px; }
+    .mem-table td { color: var(--text); }
+    .mem-table .act-retry { padding: 2px 8px; font-size: 11px; }
+    .mem-table form { margin-top: 6px; justify-content: flex-start; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="auth.js"></script>
@@ -53,6 +64,26 @@
 
     <div class="step" id="done" hidden></div>
 
+    <!-- A member's Guardians: link one by the code it shows, or move one to new hardware. -->
+    <div class="step" id="guardians" hidden>
+      <p>You're in the alpha.</p>
+      <div class="g-box" id="linkBox">
+        <h2>Link a Guardian</h2>
+        <p>On your Guardian, pick Register on the dashboard, then type the code it shows.</p>
+        <form id="linkForm">
+          <input id="linkCode" class="g-code" required placeholder="ABCD-EFGH" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="code from your Guardian">
+          <button class="act-retry" type="submit">Link</button>
+        </form>
+      </div>
+      <div class="g-box">
+        <h2>Your Guardians <span id="gCount"></span></h2>
+        <table class="mem-table">
+          <thead><tr><th>Guardian</th><th>Status</th><th>Since</th><th></th></tr></thead>
+          <tbody id="gRows"></tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="note" id="note" hidden></div>
     <div class="who" id="who" hidden><span id="whoEmail"></span> · <button id="signOut">sign out</button></div>
   </div>
@@ -77,9 +108,89 @@
       $('note').classList.toggle('err', !!isError);
     }
     function show(step, text) {
-      for (const id of ['signin', 'age', 'done']) $(id).hidden = id !== step;
+      for (const id of ['signin', 'age', 'done', 'guardians']) $(id).hidden = id !== step;
       if (step === 'done') $('done').textContent = text;
     }
+    const el = (tag, cls, text) => {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text !== undefined) e.textContent = text;
+      return e;
+    };
+
+    // ---- Guardians (account "link" / "relink") ----
+    const G_STATUS = { active: 'active', locked: 'on hold', revoked: 'turned off' };
+    const LINK_ERRORS = {
+      'bad code': "That code didn't work. Codes last 15 minutes: check it, or get a new one on the Guardian.",
+      'already registered': 'That Guardian is registered already.',
+      full: "You already have a Guardian linked (one each in the alpha). New device? Use Move to a new Guardian.",
+      'not a member': "You're not in the alpha right now.",
+      'no such guardian': "That Guardian isn't yours any more. Refresh the page.",
+      revoked: "That Guardian was turned off, so it can't move. Ask the admin.",
+    };
+    // "abcd efgh" / "abcdefgh" -> "ABCD-EFGH" (the server takes either; this is for the eye).
+    const tidyCode = s => { const c = s.toUpperCase().replace(/[\s-]/g, ''); return c.length === 8 ? c.slice(0, 4) + '-' + c.slice(4) : s.trim(); };
+
+    function renderGuardians(list, cap) {
+      $('gCount').textContent = cap ? `(${list.filter(g => g.status !== 'revoked').length} of ${cap})` : '';
+      $('linkBox').hidden = list.filter(g => g.status !== 'revoked').length >= cap;
+      const body = $('gRows');
+      body.replaceChildren();
+      for (const g of list) {
+        const tr = el('tr');
+        const acts = el('td');
+        if (g.status !== 'revoked') {
+          const move = el('button', 'act-retry', 'Move to a new Guardian');
+          move.type = 'button';
+          move.onclick = () => {
+            move.hidden = true;
+            const form = el('form');
+            const input = Object.assign(el('input', 'g-code'), { required: true, placeholder: 'ABCD-EFGH', maxLength: 12, autocomplete: 'off', spellcheck: false });
+            input.setAttribute('aria-label', 'code from the new Guardian');
+            const go = Object.assign(el('button', 'act-retry', 'Move'), { type: 'submit' });
+            const cancel = Object.assign(el('button', 'act-retry', 'Cancel'), { type: 'button' });
+            cancel.onclick = () => { form.remove(); move.hidden = false; };
+            form.onsubmit = async e => {
+              e.preventDefault();
+              if (!confirm(`Move ${g.public_name || 'this Guardian'} to the new Guardian? The old one stops counting.`)) return;
+              go.disabled = true;
+              const res = await vpetAuth.call('account', { method: 'POST', body: { op: 'relink', handle: g.handle, code: input.value } });
+              go.disabled = false;
+              if (!res.ok) { note(LINK_ERRORS[res.out.error] || "Couldn't move it: " + (res.out.error || 'try again'), true); return; }
+              note('Moved. The new Guardian picks it up the next time it goes online.');
+              refresh();
+            };
+            input.onblur = () => { input.value = tidyCode(input.value); };
+            form.append(input, go, cancel);
+            acts.append(form);
+            input.focus();
+          };
+          acts.append(move);
+        }
+        tr.append(el('td', null, g.public_name || '(no name yet)'), el('td', null, G_STATUS[g.status] || g.status),
+          el('td', null, g.registered_day || ''), acts);
+        body.append(tr);
+      }
+      if (!list.length) {
+        const td = el('td', null, 'None yet.');
+        td.colSpan = 4;
+        const tr = el('tr');
+        tr.append(td);
+        body.append(tr);
+      }
+    }
+    $('linkCode').onblur = () => { $('linkCode').value = tidyCode($('linkCode').value); };
+    $('linkForm').onsubmit = async e => {
+      e.preventDefault();
+      const btn = $('linkForm').querySelector('button');
+      btn.disabled = true;
+      const res = await vpetAuth.call('account', { method: 'POST', body: { op: 'link', code: $('linkCode').value } });
+      btn.disabled = false;
+      if (!res.ok) { note(LINK_ERRORS[res.out.error] || "Couldn't link it: " + (res.out.error || 'try again'), true); return; }
+      $('linkCode').value = '';
+      note(`Linked ${res.out.guardian.public_name || 'your Guardian'}. It shows as registered the next time it goes online.`);
+      refresh();
+    };
 
     async function refresh() {
       const s = vpetAuth.session();
@@ -98,7 +209,8 @@
       if (!a.adult) return show('done', "Sorry, you can't join the alpha.");
       if (a.member) {
         localStorage.removeItem(TOKEN_STORE);
-        return show('done', "You're in the alpha. Linking your Guardian comes next; you'll get a note when it's ready.");
+        renderGuardians(out.guardians || [], out.guardian_cap || 0);
+        return show('guardians');
       }
       const token = localStorage.getItem(TOKEN_STORE);
       if (!token) return show('done', 'Open the invite link you were sent to join.');

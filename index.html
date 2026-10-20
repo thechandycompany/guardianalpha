@@ -44,6 +44,12 @@
     .mem-table th, .mem-table td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
     .mem-table th { color: var(--muted); font-weight: normal; letter-spacing: 1px; text-transform: uppercase; font-size: 11px; }
     .mem-table .act-retry { margin: 0 4px 0 0; padding: 2px 8px; }
+    .brd-list { list-style: none; padding: 0; margin: 6px 0 12px; font-size: 13px; }
+    .brd-list li { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+    .brd-list .rk { width: 2.2em; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .brd-list .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .brd-list .nm .pa { width: 2em; height: 2em; vertical-align: -0.6em; margin-right: 8px; }
+    .brd-list .vl { font-variant-numeric: tabular-nums; }
     .mem-log { list-style: none; padding: 0; margin: 8px 0 0; font-size: 12px; color: var(--muted); }
 
     /* ---- The map: the whole grid, fitted to the width ---- */
@@ -320,6 +326,7 @@
       <button class="tab" id="tab-board" role="tab" aria-controls="panel-board" aria-selected="true" tabindex="0">Leaderboard</button>
       <button class="tab" id="tab-activity" role="tab" aria-controls="panel-activity" aria-selected="false" tabindex="-1">Activity log</button>
       <button class="tab" id="tab-members" role="tab" aria-controls="panel-members" aria-selected="false" tabindex="-1">Members</button>
+      <button class="tab" id="tab-boards" role="tab" aria-controls="panel-boards" aria-selected="false" tabindex="-1">Boards</button>
     </div>
 
     <div id="panel-board" role="tabpanel" aria-labelledby="tab-board" tabindex="0">
@@ -414,9 +421,40 @@
         <thead><tr><th>Account</th><th>Signs in with</th><th>Age screen</th><th>Alpha</th><th>Since</th><th></th></tr></thead>
         <tbody id="memRows"></tbody>
       </table>
+      <!-- Registered Guardians (by handle; the Guardian ID never leaves the server). -->
+      <div class="act-note">Guardians</div>
+      <table class="mem-table">
+        <thead><tr><th>Guardian</th><th>Owner</th><th>Status</th><th>Art</th><th>Since</th><th>Last seen</th><th></th></tr></thead>
+        <tbody id="memGuardians"></tbody>
+      </table>
       <div class="act-note">Admin log</div>
       <ul class="mem-log" id="memLog"></ul>
     </div><!-- /panel-members -->
+
+    <!-- Boards: registered Guardians' scores by day / week / all time
+         (admin-boards, from board_snapshots: rebuilt every 5 minutes). -->
+    <div id="panel-boards" role="tabpanel" aria-labelledby="tab-boards" tabindex="0" hidden>
+      <div class="act-controls">
+        <div class="gran" role="group" aria-label="period">
+          <button id="brd-day" aria-pressed="false">Today</button>
+          <button id="brd-week" aria-pressed="true">This week</button>
+          <button id="brd-all" aria-pressed="false">All time</button>
+        </div>
+        <select id="brdMetric" aria-label="score">
+          <option value="boss_damage">Boss damage</option>
+          <option value="wins">Wins</option>
+          <option value="finds">Finds</option>
+          <option value="visits">Visits</option>
+        </select>
+        <button class="act-retry" id="brdRefresh">Refresh</button>
+      </div>
+      <div class="act-cap" id="brdCap"></div>
+      <div class="act-note" id="brdNote" hidden></div>
+      <ol class="brd-list" id="brdList"></ol>
+      <div class="act-cap">Registered Guardians only, this season; hidden, revoked and locked ones are left out.
+        Days are Pacific; weeks start on Monday. Virtual node visits count (refereed by the server):
+        a visit, a find, a win that takes a node, and the damage dealt to bosses.</div>
+    </div><!-- /panel-boards -->
   </div>
 
   <script>
@@ -526,17 +564,28 @@
       return artMap.has(name) ? artMap.get(name) : 0;
     }
     // Checked-in pictures (pet-visit "profile", via admin-site): name -> crc, and
-    // name -> { crc, src } once fetched. They win over the art ID.
+    // name -> { crc, src } once fetched (old firmware's own uploads). They win
+    // over the board's art ID.
     let picCrc = {};
     const picCache = new Map();
     const picSrc = name => { const p = picCache.get(name); return p && p.crc === picCrc[name] ? p.src : null; };
+    // Catalog art the Guardian checked in (admin-site "arts": name -> id, the
+    // partner pool: art/partners/<id>.png, written by embed_partners.py). It
+    // wins over everything; a picture that won't load falls to the next one.
+    let picArt = {};
+    const PARTNER_ID = /^[a-z0-9_-]{1,16}$/;
+    const partnerSrc = id => typeof id === 'string' && PARTNER_ID.test(id) ? 'art/partners/' + id + '.png' : null;
+    const petSrcs = name => [partnerSrc(Object.hasOwn(picArt, name) ? picArt[name] : null), picSrc(name),
+                             'art/' + artOf(name) + '.png'].filter(Boolean);
     function petImg(name, cls) {
       const img = el('img', cls || 'pa');
-      img.src = picSrc(name) || 'art/' + artOf(name) + '.png';
+      const srcs = petSrcs(name);
+      let at = 0;
+      img.src = srcs[0];
       img.alt = '';
       img.width = img.height = 64;
       img.decoding = 'async';
-      img.onerror = () => { img.hidden = true; };
+      img.onerror = () => { if (++at < srcs.length) img.src = srcs[at]; else img.hidden = true; };
       return img;
     }
 
@@ -725,7 +774,7 @@
     const HASH = new URLSearchParams(RAW_HASH === 'activity' ? 'tab=activity' : RAW_HASH);
     const state = {
       rows: [], faction: HASH.get('f'), pet: HASH.get('pet') || '', node: HASH.get('node'),
-      tab: ['activity', 'members'].includes(HASH.get('tab')) ? HASH.get('tab') : 'board',
+      tab: ['activity', 'members', 'boards'].includes(HASH.get('tab')) ? HASH.get('tab') : 'board',
     };
     let zoneEls = [], dotEls = [], cardEls = [];
 
@@ -1192,6 +1241,21 @@
       return out;
     }
 
+    // ?demo: about half the pets get catalog art (art/partners/index.json), the
+    // rest keep the board's art ID, like a mix of new and old firmware.
+    async function demoArts(rows) {
+      let ids = [];
+      try { ids = (await (await fetch('art/partners/index.json')).json()).map(a => a.id); } catch (_) { return; }
+      if (!ids.length) return;
+      const names = new Set();
+      for (const n of rows) {
+        if (n.champion) names.add(n.champion.name);
+        for (const r of n.top5 || []) names.add(r.name);
+      }
+      let i = 0;
+      for (const nm of names) { if (nm && i % 2 === 0) picArt[nm] = ids[(i / 2) % ids.length]; i++; }
+    }
+
     // ?demo: made-up nodes, to see the map without real ones. ?demo=60 for 60 of them.
     function demoRows() {
       const factions = Object.keys(FACTION_COLORS);
@@ -1383,7 +1447,9 @@
     async function load() {
       if (DEMO) {
         // The demo makes something happen on every refresh, to show off the announcements.
-        show(first ? demoRows() : demoChange(state.rows));
+        const rows = first ? demoRows() : demoChange(state.rows);
+        if (first) await demoArts(rows);
+        show(rows);
         setStatus('demo data (made up)');
         return;
       }
@@ -1391,6 +1457,9 @@
       try {
         const out = await adminFetch('admin-site');
         picCrc = out.pics || {};
+        const arts = out.arts || {};
+        const artsChanged = JSON.stringify(arts) !== JSON.stringify(picArt);
+        picArt = arts;
         // Pictures we don't have yet (or that changed) before drawing, so
         // announcements show them. At most 100 names a request.
         const want = Object.keys(picCrc).filter(n => !picSrc(n));
@@ -1401,7 +1470,7 @@
         unlockPage();
         show(out.nodes || []);
         // New pictures: everything else that shows pets (drawn before they came) too.
-        if (want.length) {
+        if (want.length || artsChanged) {
           renderNicks();
           if (actState.events) renderActivity();
           if (ADMIN && adminState.visits.length) renderAdmin();
@@ -1829,8 +1898,8 @@
     renderNicks();
 
     // ---- Tabs ----
-    const TAB_IDS = ['tab-board', 'tab-activity', 'tab-members'];
-    const TABS = ['board', 'activity', 'members'];
+    const TAB_IDS = ['tab-board', 'tab-activity', 'tab-members', 'tab-boards'];
+    const TABS = ['board', 'activity', 'members', 'boards'];
     function selectTab(which, focus) {
       state.tab = which;
       const activeId = TAB_IDS[TABS.indexOf(which)];
@@ -1843,8 +1912,10 @@
       $('panel-board').hidden = which !== 'board';
       $('panel-activity').hidden = which !== 'activity';
       $('panel-members').hidden = which !== 'members';
+      $('panel-boards').hidden = which !== 'boards';
       writeHash();
       if (which === 'members') loadMembers();
+      else if (which === 'boards') loadBoards();
       else if (which === 'activity') {
         if (!actState.started) { actState.started = true; loadActivity(); }
         else renderActivity();
@@ -1873,6 +1944,8 @@
     $('tab-activity').addEventListener('keydown', onTabKey);
     $('tab-members').onclick = () => selectTab('members', false);
     $('tab-members').addEventListener('keydown', onTabKey);
+    $('tab-boards').onclick = () => selectTab('boards', false);
+    $('tab-boards').addEventListener('keydown', onTabKey);
 
     function setGran(g) {
       actState.gran = g;
@@ -1938,6 +2011,35 @@
       $('memLog').replaceChildren(...(memState.actions || []).map(x => el('li', null,
         `${new Date(x.at).toLocaleString()} · ${who.get(x.admin) || 'admin'} · ${x.action}${x.target ? ' · ' + (who.get(x.target) || x.target) : ''}${x.detail ? ' · ' + x.detail : ''}`)));
     }
+    // Registered Guardians: Revoke / Lock / Restore, Hide / Unhide (admin-accounts g_*).
+    function renderMemGuardians() {
+      const body = $('memGuardians');
+      body.replaceChildren();
+      for (const g of memState.guardians || []) {
+        const acts = el('td');
+        const btn = (text, op, ask) => {
+          const b = el('button', 'act-retry', text);
+          b.onclick = () => { if (!ask || confirm(ask)) memDo({ op, handle: g.handle }); };
+          acts.append(b);
+        };
+        const name = g.public_name || g.handle;
+        if (g.status === 'active') {
+          btn('Lock', 'g_lock');
+          btn('Revoke', 'g_revoke', `Revoke ${name}? Its scores stop counting.`);
+        } else {
+          btn('Restore', 'g_restore');
+          if (g.status === 'locked') btn('Revoke', 'g_revoke', `Revoke ${name}? Its scores stop counting.`);
+        }
+        btn(g.hidden ? 'Unhide' : 'Hide', g.hidden ? 'g_unhide' : 'g_hide');
+        const status = g.status + (g.hidden ? ' · hidden' : '') + (g.source && g.source !== 'alpha' ? ' · ' + g.source : '');
+        const tr = el('tr');
+        tr.title = 'handle ' + g.handle;
+        tr.append(el('td', null, name), el('td', null, g.owner_email || '(no owner)'), el('td', null, status),
+          el('td', null, g.art || ''), el('td', null, g.registered_day || ''), el('td', null, g.last_seen_day || ''), acts);
+        body.append(tr);
+      }
+      if (!(memState.guardians || []).length) body.append(Object.assign(el('tr'), { innerHTML: '<td colspan="7">No Guardians registered yet.</td>' }));
+    }
     async function loadMembers() {
       if (DEMO || !canTry()) return;
       try {
@@ -1945,7 +2047,9 @@
         memState.accounts = out.accounts || [];
         memState.settings = out.settings || null;
         memState.actions = out.actions || [];
+        memState.guardians = out.guardians || [];
         renderMembers();
+        renderMemGuardians();
       } catch (err) {
         if (!(err instanceof LockedError)) memNote("Couldn't load members: " + err.message, true);
       }
@@ -1962,6 +2066,75 @@
     $('memClose').onclick = () => { if (confirm('Close joining? The current link stops working.')) memDo({ op: 'close_link' }, () => { $('memLink').hidden = true; }); };
     $('memCapSave').onclick = () => memDo({ op: 'set_cap', seat_cap: parseInt($('memCap').value, 10) }, () => memNote('Saved the seat cap.'));
     $('memRefresh').onclick = () => loadMembers();
+
+    // ---- Boards (admin-boards: the snapshots pg_cron rebuilds every 5 minutes) ----
+    const BRD_PERIODS = ['day', 'week', 'all'];
+    const BRD_METRICS = { boss_damage: 'Boss damage', wins: 'Wins', finds: 'Finds', visits: 'Visits' };
+    const brdState = { period: 'week', metric: 'boss_damage', out: null };
+    function brdNote(text, isError) {
+      $('brdNote').textContent = text || '';
+      $('brdNote').hidden = !text;
+      $('brdNote').classList.toggle('err', !!isError);
+    }
+    // ?demo: made-up rows, named after the demo map's Guardians.
+    let brdDemoArt = null;
+    async function demoBoard(period, metric) {
+      if (brdDemoArt === null) {
+        try { brdDemoArt = (await (await fetch('art/partners/index.json')).json()).map(a => a.id); } catch (_) { brdDemoArt = []; }
+      }
+      const names = [...new Set(state.rows.map(n => n.champion && n.champion.name).filter(Boolean))];
+      while (names.length < 12) names.push(['Brave Defender', 'Jolly Navigator', 'Swift Ranger', 'Cozy Healer'][names.length % 4] + ' #' + (1000 + names.length * 37));
+      const scale = { day: 1, week: 6, all: 30 }[period] * { boss_damage: 400, wins: 3, finds: 5, visits: 8 }[metric];
+      let seed = (period.length * 31 + metric.length * 7) >>> 0;
+      const rnd = () => (seed = (seed * 1103515245 + 12345) >>> 0) / 4294967296;
+      const rows = names.slice(0, 12).map((public_name, i) => ({
+        public_name, art: brdDemoArt.length && i % 3 !== 2 ? brdDemoArt[i % brdDemoArt.length] : null,
+        value: Math.max(1, Math.round(scale * (0.2 + rnd() * 1.8))),
+      })).sort((a, b) => b.value - a.value);
+      rows.forEach((r, i) => { r.rank = i && r.value === rows[i - 1].value ? rows[i - 1].rank : i + 1; });
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+      const d = new Date(today + 'T00:00:00Z'), monday = new Date(d - ((d.getUTCDay() + 6) % 7) * 864e5).toISOString().slice(0, 10);
+      return { ok: true, period, metric, period_key: period === 'day' ? today : period === 'week' ? monday : '2000-01-01', rows, built_day: today };
+    }
+    function renderBoards() {
+      for (const p of BRD_PERIODS) $('brd-' + p).setAttribute('aria-pressed', String(p === brdState.period));
+      $('brdMetric').value = brdState.metric;
+      const out = brdState.out, list = $('brdList');
+      list.replaceChildren();
+      if (!out) { $('brdCap').textContent = ''; return; }
+      const when = out.period === 'day' ? out.period_key : out.period === 'week' ? 'week of ' + out.period_key : 'all time';
+      $('brdCap').textContent = `${BRD_METRICS[out.metric] || out.metric} · ${when}` +
+        (out.built_day ? ` · built ${out.built_day} (every 5 minutes)` : ' · not built yet');
+      for (const r of out.rows || []) {
+        const name = r.public_name || '';
+        // The board's own art id, for a Guardian the map hasn't given one.
+        if (name && r.art && !Object.hasOwn(picArt, name)) picArt[name] = r.art;
+        const li = el('li'), nm = el('span', 'nm');
+        if (name) nm.append(petEl(name)); else nm.append('(unnamed Guardian)');
+        li.append(el('span', 'rk', '#' + r.rank), nm, el('span', 'vl', fmt(r.value)));
+        list.append(li);
+      }
+      if (!(out.rows || []).length) brdNote('No scores on this board yet.');
+      else brdNote('');
+    }
+    let brdAsk = 0;   // only the latest request's answer is shown
+    async function loadBoards() {
+      if (!DEMO && !canTry()) return;
+      const ask = ++brdAsk, { period, metric } = brdState;
+      if (!brdState.out) brdNote('Loading the board…');
+      try {
+        const out = DEMO ? await demoBoard(period, metric)
+          : await adminFetch('admin-boards', `?period=${period}&metric=${metric}`);
+        if (ask !== brdAsk) return;
+        brdState.out = out;
+        renderBoards();
+      } catch (err) {
+        if (ask === brdAsk && !(err instanceof LockedError)) brdNote("Couldn't load the board: " + err.message, true);
+      }
+    }
+    for (const p of BRD_PERIODS) $('brd-' + p).onclick = () => { brdState.period = p; brdState.out = null; renderBoards(); loadBoards(); };
+    $('brdMetric').onchange = () => { brdState.metric = $('brdMetric').value; brdState.out = null; renderBoards(); loadBoards(); };
+    $('brdRefresh').onclick = () => loadBoards();
 
     // Open the right tab on load (survives refresh via the URL hash).
     selectTab(state.tab, false);
