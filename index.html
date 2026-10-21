@@ -563,19 +563,13 @@
       }
       return artMap.has(name) ? artMap.get(name) : 0;
     }
-    // Checked-in pictures (guardian-visit "profile", via admin-site): name -> crc, and
-    // name -> { crc, src } once fetched (old firmware's own uploads). They win
-    // over the board's art ID.
-    let picCrc = {};
-    const picCache = new Map();
-    const picSrc = name => { const p = picCache.get(name); return p && p.crc === picCrc[name] ? p.src : null; };
     // Catalog art the Guardian checked in (admin-site "arts": name -> id, the
     // partner pool: art/partners/<id>.png, written by embed_partners.py). It
     // wins over everything; a picture that won't load falls to the next one.
     let picArt = {};
     const PARTNER_ID = /^[a-z0-9_-]{1,16}$/;
     const partnerSrc = id => typeof id === 'string' && PARTNER_ID.test(id) ? 'art/partners/' + id + '.png' : null;
-    const guardianSrcs = name => [partnerSrc(Object.hasOwn(picArt, name) ? picArt[name] : null), picSrc(name),
+    const guardianSrcs = name => [partnerSrc(Object.hasOwn(picArt, name) ? picArt[name] : null),
                              'art/' + artOf(name) + '.png'].filter(Boolean);
     function guardianImg(name, cls) {
       const img = el('img', cls || 'pa');
@@ -1456,21 +1450,13 @@
       if (!canTry()) { lockPage(''); return; }
       try {
         const out = await adminFetch('admin-site');
-        picCrc = out.pics || {};
         const arts = out.arts || {};
         const artsChanged = JSON.stringify(arts) !== JSON.stringify(picArt);
         picArt = arts;
-        // Pictures we don't have yet (or that changed) before drawing, so
-        // announcements show them. At most 100 names a request.
-        const want = Object.keys(picCrc).filter(n => !picSrc(n));
-        for (let i = 0; i < want.length; i += 100) {
-          const more = await adminFetch('admin-site', '?pics=' + encodeURIComponent(want.slice(i, i + 100).join('|')));
-          for (const [n, b64] of Object.entries(more.png || {})) picCache.set(n, { crc: picCrc[n], src: 'data:image/png;base64,' + b64 });
-        }
         unlockPage();
         show(out.nodes || []);
         // New pictures: everything else that shows Guardians (drawn before they came) too.
-        if (want.length || artsChanged) {
+        if (artsChanged) {
           renderNicks();
           if (actState.events) renderActivity();
           if (ADMIN && adminState.visits.length) renderAdmin();
