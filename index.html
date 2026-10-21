@@ -303,6 +303,12 @@
       .act-log li { font-size: 12px; }
       .act-log li .t { min-width: 60px; }
     }
+    /* A hover / tap help icon: <span class="info" tabindex="0" role="note" aria-label="...">ⓘ<span class="info-text">...</span></span> */
+    .info { position: relative; display: inline-block; margin-left: 6px; color: var(--muted, #8a96ad); cursor: help; font-size: 12px; outline: none; }
+    .info .info-text { display: none; position: absolute; left: 50%; top: 125%; transform: translateX(-50%); z-index: 20;
+      width: max-content; max-width: 240px; padding: 6px 9px; border-radius: 6px; background: #0b1220; border: 1px solid #22304a;
+      color: #cfd8e6; font-size: 11px; line-height: 1.4; text-align: left; white-space: normal; font-weight: normal; letter-spacing: 0; }
+    .info:hover .info-text, .info:focus .info-text { display: block; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="auth.js"></script>
@@ -310,12 +316,12 @@
 <body>
   <div class="page">
     <h1>The Grid</h1>
-    <div class="sub">Node leaderboards · closed alpha · <span id="status">loading…</span><span id="lockLinkWrap" hidden> · <button class="link" id="lockLink">lock</button></span></div>
+    <div class="sub">closed alpha · <span id="status">loading…</span><span id="lockLinkWrap" hidden> · <button class="link" id="lockLink">lock</button></span></div>
 
     <div class="lock" id="lock" hidden>
-      This page is private. Sign in as an admin.
+      Admin sign-in
       <div id="lockSignin"></div>
-      <div class="or">or enter the admin key (kept in this browser):</div>
+      <div class="or">or the admin key:</div>
       <form id="lockForm">
         <input id="lockKey" type="password" placeholder="admin key" autocomplete="off" aria-label="admin key">
         <button class="act-retry" type="submit">Unlock</button>
@@ -338,7 +344,7 @@
     </div>
 
     <div class="bar">
-      <div class="legend" id="legend" role="group" aria-label="show one faction"></div>
+      <div class="legend" id="legend" role="group" aria-label="show one faction"></div><span class="info" tabindex="0" role="note" aria-label="Dashed: virtual node. Green: infected. Gold star: Super Gateway. Brighter: stronger.">ⓘ<span class="info-text">Dashed: virtual node. Green: infected. Gold star: Super Gateway. Brighter: stronger.</span></span>
       <div class="field">
         <label for="pet">◆ Your Guardian</label>
         <input id="pet" list="pets" placeholder="Brave Defender #4821" autocomplete="off" spellcheck="false">
@@ -356,22 +362,10 @@
     </section>
 
     <div class="nicks">
-      <h2>Nicknames</h2>
-      <div class="act-cap">Click any Guardian's name to give it a nickname. They're kept in this browser only.</div>
+      <h2>Nicknames<span class="info" tabindex="0" role="note" aria-label="Click a Guardian's name to nickname it (this browser only).">ⓘ<span class="info-text">Click a Guardian's name to nickname it (this browser only).</span></span></h2>
       <ul id="nickList"></ul>
     </div>
 
-    <div class="foot">
-      The map is made up: a node's spot on it has nothing to do with where it really is.
-      Guardians show here only by their generated names. Nothing anyone types, no locations,
-      no accounts, and no cookies or tracking. Boards update when nodes report in.
-      Dashed markers are virtual nodes: Guardians reach them over home Wi-Fi. Every night from 12 to 5am
-      Pacific, an infection takes over a few of them (green); beat its virus boss once to clean it out.
-      Gold stars in marching gold frames are the Super Gateways (North, East, South and West), with how much of the ring a faction holds. They open only to a faction whose champions hold all 8 nodes around one.
-      Their bosses are much tougher and their finds much rarer, and beating one infects all 8 nodes around it.
-      Stronger nodes (champion level plus boss level) have brighter tiles and bigger, brighter markers, with up to 3 pips.
-      The marks on the tiles (peaks, trees, water, dunes, grass) come from each node's name.
-    </div>
     </div><!-- /panel-board -->
 
     <div id="panel-activity" role="tabpanel" aria-labelledby="tab-activity" tabindex="0" hidden>
@@ -382,7 +376,6 @@
         </div>
         <button class="act-retry" id="actRefresh">Refresh</button>
       </div>
-      <div class="act-cap" id="actWhy">Activity is recorded by day, so the smallest view is Day.</div>
       <div class="act-cap" id="actCap"></div>
       <div class="act-chips" id="actChips" hidden></div>
       <div id="actChartWrap"></div>
@@ -392,9 +385,7 @@
       <!-- TEMP-VISIT-LOG (testing only, remove before GA): rows come from the
            admin-visit-log function, with the site's admin key. -->
       <div class="act-admin" id="adminWrap" hidden>
-        <h2>Visits (admin, temporary)</h2>
-        <div class="act-cap">Exact times of Guardian visits to virtual nodes, from the private visit log.
-          Physical nodes aren't logged.</div>
+        <h2>Visits</h2>
         <div class="act-controls">
           <select id="adminNode" aria-label="node"><option value="">All nodes</option></select>
           <button class="act-retry" id="adminLoad">Refresh</button>
@@ -445,7 +436,7 @@
           <button id="brdm-boss_damage" aria-pressed="true">Boss Damage</button>
           <button id="brdm-finds" aria-pressed="false">Scavenges</button>
           <button id="brdm-visits" aria-pressed="false">Visits</button>
-        </div>
+        </div><span class="info" tabindex="0" role="note" aria-label="Registered Guardians only. Battle Rank starts at 1000; 'placing' = under 10 rated duels. Days are Pacific.">ⓘ<span class="info-text">Registered Guardians only. Battle Rank starts at 1000; 'placing' = under 10 rated duels. Days are Pacific.</span></span>
       </div>
       <div class="act-controls" id="brdPeriodRow">
         <div class="gran" role="group" aria-label="period">
@@ -458,9 +449,6 @@
       <div class="act-cap" id="brdCap"></div>
       <div class="act-note" id="brdNote" hidden></div>
       <ol class="brd-list" id="brdList"></ol>
-      <div class="act-cap">Registered Guardians only, this season; hidden, revoked and locked ones are left out.
-        Days are Pacific; weeks start on Monday. Virtual node visits count (refereed by the server):
-        a visit, a scavenge (something found), and the damage dealt to bosses.</div>
     </div><!-- /panel-boards -->
   </div>
 
@@ -612,7 +600,7 @@
     }
     function editNick(name) {
       if (!name) return;
-      const v = prompt(`Nickname for ${name} (leave empty to remove):`, nickOf(name));
+      const v = prompt(`Nickname for ${name}:`, nickOf(name));
       if (v !== null) setNick(name, v);
     }
     function setNick(name, v) {
@@ -1649,10 +1637,7 @@
     // Window caption per granularity. The source records activity by day, so the
     // smallest view is Day (the note by the filter explains why Hour is absent).
     function activityCaption() {
-      const win = actState.gran === 'week'
-        ? 'Week view shows the last 12 weeks, weeks start Monday.'
-        : 'Day view shows the last 30 days.';
-      return `${win} Times shown in your local timezone (${LOCAL_TZ}). Activity is recorded by day. Each item is a node board update.`;
+      return `${actState.gran === 'week' ? 'Last 12 weeks' : 'Last 30 days'} · ${LOCAL_TZ}`;
     }
 
     function actNote(text, isErr, withRetry) {
@@ -1975,7 +1960,7 @@
         if (done) done(out);
         await loadMembers();
       } catch (err) {
-        if (!(err instanceof LockedError)) memNote(err.message === 'sign in to change things' ? 'Sign in as an admin to change things (the key is read-only).' : "Couldn't: " + err.message, true);
+        if (!(err instanceof LockedError)) memNote(err.message === 'sign in to change things' ? 'Sign in as an admin to make changes.' : "Couldn't: " + err.message, true);
       }
     }
     function renderMembers() {
@@ -2029,10 +2014,10 @@
         const name = g.public_name || g.handle;
         if (g.status === 'active') {
           btn('Lock', 'g_lock');
-          btn('Revoke', 'g_revoke', `Revoke ${name}? Its scores stop counting.`);
+          btn('Revoke', 'g_revoke', `Revoke ${name}?`);
         } else {
           btn('Restore', 'g_restore');
-          if (g.status === 'locked') btn('Revoke', 'g_revoke', `Revoke ${name}? Its scores stop counting.`);
+          if (g.status === 'locked') btn('Revoke', 'g_revoke', `Revoke ${name}?`);
         }
         btn(g.hidden ? 'Unhide' : 'Hide', g.hidden ? 'g_unhide' : 'g_hide');
         const status = g.status + (g.hidden ? ' · hidden' : '') + (g.source && g.source !== 'alpha' ? ' · ' + g.source : '');
@@ -2060,20 +2045,20 @@
       }
     }
     $('memRotate').onclick = () => {
-      if (memState.settings && memState.settings.joining && !confirm('Make a new join link? The old one stops working (members stay members).')) return;
+      if (memState.settings && memState.settings.joining && !confirm('New join link? The old one stops working.')) return;
       memDo({ op: 'rotate_link' }, out => {
         const link = JOIN_PAGE + '#t=' + out.token;
         $('memLink').hidden = false;
-        $('memLink').textContent = 'New join link (shown once, copy it now): ' + link;
+        $('memLink').textContent = 'Join link (copy now): ' + link;
         navigator.clipboard?.writeText(link).then(() => memNote('Copied the join link.'), () => {});
       });
     };
-    $('memClose').onclick = () => { if (confirm('Close joining? The current link stops working.')) memDo({ op: 'close_link' }, () => { $('memLink').hidden = true; }); };
+    $('memClose').onclick = () => { if (confirm('Close joining?')) memDo({ op: 'close_link' }, () => { $('memLink').hidden = true; }); };
     $('memCapSave').onclick = () => memDo({ op: 'set_cap', seat_cap: parseInt($('memCap').value, 10) }, () => memNote('Saved the seat cap.'));
     $('memRefresh').onclick = () => loadMembers();
     $('memVirusToggle').onclick = () => {
       const on = !(memState.virus && memState.virus.enabled);
-      if (!on && !confirm('Turn the night virus off? No nodes get infected until it is back on (infected ones stay infected).')) return;
+      if (!on && !confirm('Turn the night virus off?')) return;
       memDo({ op: 'virus_set', enabled: on }, () => memNote(on ? 'The night virus is on.' : 'The night virus is off.'));
     };
     $('memVirusSave').onclick = () => memDo({ op: 'virus_set', per_night: parseInt($('memVirusPer').value, 10) }, () => memNote('Saved the virus count.'));
@@ -2120,7 +2105,7 @@
       const rank = brdState.metric === 'rank';
       $('brdPeriodRow').hidden = rank;   // a season rating, not a day / week total
       if (rank) {
-        $('brdCap').textContent = out ? `Battle Rank (MMR) · season ${out.season_key || ''} · everyone starts at 1000; placing = under 10 rated duels` : '';
+        $('brdCap').textContent = out ? `Battle Rank · ${out.season_key || ''}` : '';
         if (!out) return;
         for (const r of out.rows || []) {
           const name = r.public_name || '';
@@ -2133,13 +2118,13 @@
           li.append(el('span', 'rk', '#' + r.rank), nm, vl);
           list.append(li);
         }
-        brdNote((out.rows || []).length ? '' : 'No rated duels this season yet: duel another registered Guardian.');
+        brdNote((out.rows || []).length ? '' : 'No rated duels yet.');
         return;
       }
       if (!out) { $('brdCap').textContent = ''; return; }
       const when = out.period === 'day' ? out.period_key : out.period === 'week' ? 'week of ' + out.period_key : 'all time';
       $('brdCap').textContent = `${BRD_METRICS[out.metric] || out.metric} · ${when}` +
-        (out.built_day ? ` · built ${out.built_day} (every 5 minutes)` : ' · not built yet');
+        (out.built_day ? ` · updated ${out.built_day}` : ' · not built yet');
       for (const r of out.rows || []) {
         const name = r.public_name || '';
         // The board's own art id, for a Guardian the map hasn't given one.

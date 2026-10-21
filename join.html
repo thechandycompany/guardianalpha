@@ -39,6 +39,12 @@
     .mem-table td { color: var(--text); }
     .mem-table .act-retry { padding: 2px 8px; font-size: 11px; }
     .mem-table form { margin-top: 6px; justify-content: flex-start; }
+    /* A hover / tap help icon: <span class="info" tabindex="0" role="note" aria-label="...">ⓘ<span class="info-text">...</span></span> */
+    .info { position: relative; display: inline-block; margin-left: 6px; color: var(--muted, #8a96ad); cursor: help; font-size: 12px; outline: none; }
+    .info .info-text { display: none; position: absolute; left: 50%; top: 125%; transform: translateX(-50%); z-index: 20;
+      width: max-content; max-width: 240px; padding: 6px 9px; border-radius: 6px; background: #0b1220; border: 1px solid #22304a;
+      color: #cfd8e6; font-size: 11px; line-height: 1.4; text-align: left; white-space: normal; font-weight: normal; letter-spacing: 0; }
+    .info:hover .info-text, .info:focus .info-text { display: block; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="auth.js"></script>
@@ -49,7 +55,7 @@
     <div class="sub">closed alpha</div>
 
     <div class="step" id="signin" hidden>
-      <p>Sign in to join the alpha.</p>
+      <p>Sign in</p>
       <div id="signinBox"></div>
     </div>
 
@@ -66,10 +72,8 @@
 
     <!-- A member's Guardians: link one by the code it shows, or move one to new hardware. -->
     <div class="step" id="guardians" hidden>
-      <p>You're in the alpha.</p>
       <div class="g-box" id="linkBox">
-        <h2>Link a Guardian</h2>
-        <p>On your Guardian, pick Register on the dashboard, then type the code it shows.</p>
+        <h2>Link a Guardian<span class="info" tabindex="0" role="note" aria-label="The code on your Guardian: Settings > Register.">ⓘ<span class="info-text">The code on your Guardian: Settings > Register.</span></span></h2>
         <form id="linkForm">
           <input id="linkCode" class="g-code" required placeholder="ABCD-EFGH" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="code from your Guardian">
           <button class="act-retry" type="submit">Link</button>
@@ -121,12 +125,12 @@
     // ---- Guardians (account "link" / "relink") ----
     const G_STATUS = { active: 'active', locked: 'on hold', revoked: 'turned off' };
     const LINK_ERRORS = {
-      'bad code': "That code didn't work. Codes last 15 minutes: check it, or get a new one on the Guardian.",
+      'bad code': "That code didn't work. Get a new one on the Guardian.",
       'already registered': 'That Guardian is registered already.',
-      full: "You have as many Guardians linked as the alpha allows. New device? Use Move to a new Guardian.",
+      full: "You've linked as many Guardians as allowed.",
       'not a member': "You're not in the alpha right now.",
-      'no such guardian': "That Guardian isn't yours any more. Refresh the page.",
-      revoked: "That Guardian was turned off, so it can't move. Ask the admin.",
+      'no such guardian': "That Guardian isn't yours any more.",
+      revoked: "That Guardian was turned off.",
     };
     // "abcd efgh" / "abcdefgh" -> "ABCD-EFGH" (the server takes either; this is for the eye).
     const tidyCode = s => { const c = s.toUpperCase().replace(/[\s-]/g, ''); return c.length === 8 ? c.slice(0, 4) + '-' + c.slice(4) : s.trim(); };
@@ -140,7 +144,7 @@
         const tr = el('tr');
         const acts = el('td');
         if (g.status !== 'revoked') {
-          const move = el('button', 'act-retry', 'Move to a new Guardian');
+          const move = el('button', 'act-retry', 'Move');
           move.type = 'button';
           move.onclick = () => {
             move.hidden = true;
@@ -152,12 +156,12 @@
             cancel.onclick = () => { form.remove(); move.hidden = false; };
             form.onsubmit = async e => {
               e.preventDefault();
-              if (!confirm(`Move ${g.public_name || 'this Guardian'} to the new Guardian? The old one stops counting.`)) return;
+              if (!confirm(`Move ${g.public_name || 'this Guardian'} to the new device?`)) return;
               go.disabled = true;
               const res = await guardianAuth.call('account', { method: 'POST', body: { op: 'relink', handle: g.handle, code: input.value } });
               go.disabled = false;
               if (!res.ok) { note(LINK_ERRORS[res.out.error] || "Couldn't move it: " + (res.out.error || 'try again'), true); return; }
-              note('Moved. The new Guardian picks it up the next time it goes online.');
+              note('Moved.');
               refresh();
             };
             input.onblur = () => { input.value = tidyCode(input.value); };
@@ -188,7 +192,7 @@
       btn.disabled = false;
       if (!res.ok) { note(LINK_ERRORS[res.out.error] || "Couldn't link it: " + (res.out.error || 'try again'), true); return; }
       $('linkCode').value = '';
-      note(`Linked ${res.out.guardian.public_name || 'your Guardian'}. It shows as registered the next time it goes online.`);
+      note(`Linked ${res.out.guardian.public_name || 'your Guardian'}.`);
       refresh();
     };
 
@@ -204,7 +208,7 @@
       const { ok, out } = await guardianAuth.call('account');
       if (!ok) { show('done', ''); note("Couldn't load your account: " + (out.error || 'try again'), true); return; }
       const a = out.account;
-      if (a.revoked) return show('done', 'Your alpha access was turned off. Ask the admin if that seems wrong.');
+      if (a.revoked) return show('done', 'Your access was turned off.');
       if (a.adult === null) return show('age');
       if (!a.adult) return show('done', "Sorry, you can't join the alpha.");
       if (a.member) {
@@ -213,11 +217,11 @@
         return show('guardians');
       }
       const token = localStorage.getItem(TOKEN_STORE);
-      if (!token) return show('done', 'Open the invite link you were sent to join.');
+      if (!token) return show('done', 'Open your invite link to join.');
       const res = await guardianAuth.call('account', { method: 'POST', body: { op: 'join', token } });
       if (res.ok) { localStorage.removeItem(TOKEN_STORE); return refresh(); }
       const why = {
-        'bad link': "That invite link doesn't work any more. Ask for the new one.",
+        'bad link': "That invite link has expired.",
         off: 'Joining is closed right now.',
         full: 'The alpha is full right now.',
       }[res.out.error];
