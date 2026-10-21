@@ -33,6 +33,12 @@
     .g-box h2 { margin: 0 0 6px; font-size: 12px; font-weight: normal; letter-spacing: 2px; text-transform: uppercase; color: var(--text); }
     .g-box p { margin: 0 0 4px; }
     .g-code { text-transform: uppercase; letter-spacing: 2px; }
+    .g-pic { width: 40px; height: 40px; image-rendering: pixelated; vertical-align: middle; }
+    .art-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .art-grid button { padding: 2px; background: none; border: 1px solid var(--line2); border-radius: 4px; cursor: pointer; }
+    .art-grid button[aria-pressed="true"] { border-color: var(--accent, #4fd1ff); }
+    .art-grid button:disabled { opacity: .35; cursor: default; }
+    .art-grid img { width: 48px; height: 48px; image-rendering: pixelated; display: block; }
     .mem-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
     .mem-table th, .mem-table td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line2); vertical-align: top; }
     .mem-table th { color: var(--muted); font-weight: normal; letter-spacing: 1px; text-transform: uppercase; font-size: 11px; }
@@ -82,7 +88,7 @@
       <div class="g-box">
         <h2>Your Guardians <span id="gCount"></span></h2>
         <table class="mem-table">
-          <thead><tr><th>Guardian</th><th>Status</th><th>Since</th><th></th></tr></thead>
+          <thead><tr><th></th><th>Guardian</th><th>Status</th><th>Since</th><th></th></tr></thead>
           <tbody id="gRows"></tbody>
         </table>
       </div>
@@ -135,6 +141,27 @@
     // "abcd efgh" / "abcdefgh" -> "ABCD-EFGH" (the server takes either; this is for the eye).
     const tidyCode = s => { const c = s.toUpperCase().replace(/[\s-]/g, ''); return c.length === 8 ? c.slice(0, 4) + '-' + c.slice(4) : s.trim(); };
 
+    // Pictures from the catalog (account GET "art": {id, name, owned}); the pick
+    // reaches the Guardian with its next node list (account "set_art").
+    let artList = [];
+    function picker(g, td) {
+      const grid = el('div', 'art-grid');
+      const chosen = g.art_choice || g.art;
+      for (const a of artList) {
+        const b = Object.assign(el('button'), { type: 'button', title: a.name, disabled: !a.owned });
+        b.setAttribute('aria-pressed', String(a.id === chosen));
+        b.append(Object.assign(el('img'), { src: 'art/partners/' + a.id + '.png', alt: a.name }));
+        b.onclick = async () => {
+          const res = await guardianAuth.call('account', { method: 'POST', body: { op: 'set_art', handle: g.handle, art: a.id } });
+          if (!res.ok) { note("Couldn't change it: " + (res.out.error || 'try again'), true); return; }
+          note(`${a.name} picked. Your Guardian switches when it's next online.`);
+          refresh();
+        };
+        grid.append(b);
+      }
+      td.append(grid);
+    }
+
     function renderGuardians(list, cap) {
       $('gCount').textContent = cap ? `(${list.filter(g => g.status !== 'revoked').length} of ${cap})` : '';
       $('linkBox').hidden = list.filter(g => g.status !== 'revoked').length >= cap;
@@ -170,14 +197,24 @@
             input.focus();
           };
           acts.append(move);
+          if (artList.length) {
+            const pic = el('button', 'act-retry', 'Picture');
+            pic.type = 'button';
+            pic.onclick = () => { pic.hidden = true; picker(g, acts); };
+            acts.append(pic);
+          }
         }
-        tr.append(el('td', null, g.public_name || '(no name yet)'), el('td', null, G_STATUS[g.status] || g.status),
-          el('td', null, g.registered_day || ''), acts);
+        const shown = g.art_choice || g.art;
+        const picTd = el('td');
+        if (shown) picTd.append(Object.assign(el('img', 'g-pic'), { src: 'art/partners/' + shown + '.png', alt: '' }));
+        const pending = g.art_choice && g.art_choice !== g.art;
+        tr.append(picTd, el('td', null, (g.public_name || '(no name yet)') + (pending ? ' (new picture on its way)' : '')),
+          el('td', null, G_STATUS[g.status] || g.status), el('td', null, g.registered_day || ''), acts);
         body.append(tr);
       }
       if (!list.length) {
         const td = el('td', null, 'None yet.');
-        td.colSpan = 4;
+        td.colSpan = 5;
         const tr = el('tr');
         tr.append(td);
         body.append(tr);
@@ -213,6 +250,7 @@
       if (!a.adult) return show('done', "Sorry, you can't join the alpha.");
       if (a.member) {
         localStorage.removeItem(TOKEN_STORE);
+        artList = out.art || [];
         renderGuardians(out.guardians || [], out.guardian_cap || 0);
         return show('guardians');
       }
