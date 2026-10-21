@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <!-- Closed alpha: keep it out of search engines. -->
   <meta name="robots" content="noindex, nofollow">
-  <title>The Grid · virtpet (closed alpha)</title>
+  <title>The Grid · guardian (closed alpha)</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Cpolygon points=%228,1 15,8 8,15 1,8%22 fill=%22%2338d6e8%22/%3E%3C/svg%3E">
   <style>
     :root {
@@ -124,7 +124,7 @@
       .toast, .toast.out, .toast::before, .toast .kind .ic, .toast .hero .big-ic, .confetti, .burst { animation: none !important; }
     }
 
-    /* The map's hover card: laid out like the notifications (the pet on the left, details on the right). */
+    /* The map's hover card: laid out like the notifications (the Guardian on the left, details on the right). */
     .tip {
       --c: var(--accent); position: absolute; z-index: 2; display: none; pointer-events: none;
       width: 370px; max-width: calc(100% - 12px); transform: translate(-50%, -100%);
@@ -163,7 +163,7 @@
     .details-toggle[aria-expanded="true"] .chev { transform: rotate(90deg); }
     .details .cards { margin-top: 12px; }
 
-    /* ---- Legend (click a faction to show only its nodes) + your pet ---- */
+    /* ---- Legend (click a faction to show only its nodes) + your Guardian ---- */
     .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 12px 0 6px; }
     .legend { flex: 1; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; }
     .key {
@@ -185,8 +185,8 @@
     @media (min-width: 600px) { .field input { font-size: 13px; } }
     .field input::placeholder { color: #4a586e; }
     .x { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 2px; font-size: 15px; }
-    .petline { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-    .petline b { color: #fff; }
+    .guardianline { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .guardianline b { color: #fff; }
 
     /* ---- Node cards ---- */
     .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; margin-top: 12px; }
@@ -228,11 +228,11 @@
     ol li .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     ol li .dmg { color: var(--muted); }
     .find { font-size: 12px; margin-top: 10px; color: var(--muted); }
-    /* Nicknames (this browser only): click a pet's name to set one */
+    /* Nicknames (this browser only): click a Guardian's name to set one */
     .pn { cursor: pointer; border-bottom: 1px dotted rgba(255, 255, 255, 0.3); }
     .pn:hover, .pn:focus-visible { border-bottom-color: var(--accent); outline: none; }
     .pn .real { color: var(--muted); font-size: 0.85em; }
-    /* Pet art (art/<id>.png, 64x64): a small one by every pet name, a big one in the tooltip */
+    /* Guardian art (art/<id>.png, 64x64): a small one by every Guardian name, a big one in the tooltip */
     .pa { width: 1.4em; height: 1.4em; vertical-align: -0.35em; margin-right: 4px; image-rendering: pixelated; background: #05070d; border-radius: 3px; }
     .toast { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 12px; }
     .toast .hero { width: 74px; display: flex; flex-direction: column; align-items: center; text-align: center;
@@ -341,11 +341,11 @@
       <div class="field">
         <label for="pet">◆ Your Guardian</label>
         <input id="pet" list="pets" placeholder="Brave Defender #4821" autocomplete="off" spellcheck="false">
-        <button class="x" id="petClear" aria-label="clear your Guardian" hidden>✕</button>
+        <button class="x" id="guardianClear" aria-label="clear your Guardian" hidden>✕</button>
       </div>
       <datalist id="pets"></datalist>
     </div>
-    <div class="petline" id="petline" hidden></div>
+    <div class="guardianline" id="guardianline" hidden></div>
 
     <section class="details">
       <button class="details-toggle" id="detailsToggle" aria-expanded="false" aria-controls="cards">
@@ -459,20 +459,20 @@
 
   <script>
     // The whole site is behind the admin key (closed alpha): the boards, the
-    // pet pictures and the visit log come from functions that check it
+    // Guardian pictures and the visit log come from functions that check it
     // (admin-site, admin-visit-log; secret ADMIN_VISIT_LOG_KEY). It's kept in
     // this browser only. ?demo needs no key (made-up data).
-    const SUPABASE_URL = vpetAuth.SUPABASE_URL;
-    const ADMIN_KEY_STORE = 'vpetAdminKey';
+    const SUPABASE_URL = guardianAuth.SUPABASE_URL;
+    const ADMIN_KEY_STORE = 'guardianAdminKey';
     const adminKey = () => localStorage.getItem(ADMIN_KEY_STORE) || '';
     // Signed in (an admin account: site/auth.js), or the old key.
-    const canTry = () => !!(vpetAuth.session() || adminKey());
+    const canTry = () => !!(guardianAuth.session() || adminKey());
     class LockedError extends Error {}
     // Call a site function as the signed-in admin, else with the key. Not an
     // admin / a wrong key locks the page.
     async function adminFetch(fn, query, opts) {
       if (!canTry()) { lockPage(''); throw new LockedError('locked'); }
-      const headers = vpetAuth.session() ? { Authorization: 'Bearer ' + vpetAuth.session().access_token } : { 'x-admin-key': adminKey() };
+      const headers = guardianAuth.session() ? { Authorization: 'Bearer ' + guardianAuth.session().access_token } : { 'x-admin-key': adminKey() };
       if (opts && opts.body !== undefined) headers['Content-Type'] = 'application/json';
       const res = await fetch(SUPABASE_URL + '/functions/v1/' + fn + (query || ''), {
         method: (opts && opts.method) || 'GET', headers, cache: 'no-store',
@@ -480,7 +480,7 @@
       });
       const out = await res.json().catch(() => ({}));
       if (res.status === 401) {
-        if (vpetAuth.session()) lockPage(vpetAuth.email() + " isn't an admin.");
+        if (guardianAuth.session()) lockPage(guardianAuth.email() + " isn't an admin.");
         else { localStorage.removeItem(ADMIN_KEY_STORE); lockPage('Wrong key.'); }
         throw new LockedError('locked');
       }
@@ -488,7 +488,7 @@
       return out;
     }
 
-    // Faction colors (virtpet/node_protocol.h order; TODO.md).
+    // Faction colors (guardian/node_protocol.h order; TODO.md).
     const FACTION_COLORS = {
       'Signal Keepers': '#38d6e8', 'Ember Legion': '#e0443e', 'Gatekeepers': '#9b5de5',
       'Wayfinders': '#ff4fa3', 'Trackers': '#e8b931', 'Dreamwardens': '#3a4fb8', 'Circuit Kin': '#f08a24',
@@ -543,9 +543,9 @@
     const hpFrac = n => (n.boss && n.boss.maxHp) ? n.boss.hp / n.boss.maxHp : 1;
     const swatch = k => { const s = el('i', 'sw'); s.style.setProperty('--c', kcolor(k)); return s; };
 
-    // Pet art: a pet's picture from the curated catalog in art/ (art/<id>.png,
+    // Guardian art: a Guardian's picture from the curated catalog in art/ (art/<id>.png,
     // 64x64), by the art ID its board entry carries (champion.art, top5[].art,
-    // rarest.art). No ID yet (nothing sends one today) = art 0, the wolf. A pet
+    // rarest.art). No ID yet (nothing sends one today) = art 0, the wolf. A Guardian
     // without an ID of its own here takes the one it has elsewhere on the map.
     const ART_COUNT = 2;   // art/0.png (wolf) .. art/1.png (cat)
     const artId = v => Number.isInteger(v) && v >= 0 && v < ART_COUNT ? v : null;
@@ -563,7 +563,7 @@
       }
       return artMap.has(name) ? artMap.get(name) : 0;
     }
-    // Checked-in pictures (pet-visit "profile", via admin-site): name -> crc, and
+    // Checked-in pictures (guardian-visit "profile", via admin-site): name -> crc, and
     // name -> { crc, src } once fetched (old firmware's own uploads). They win
     // over the board's art ID.
     let picCrc = {};
@@ -575,11 +575,11 @@
     let picArt = {};
     const PARTNER_ID = /^[a-z0-9_-]{1,16}$/;
     const partnerSrc = id => typeof id === 'string' && PARTNER_ID.test(id) ? 'art/partners/' + id + '.png' : null;
-    const petSrcs = name => [partnerSrc(Object.hasOwn(picArt, name) ? picArt[name] : null), picSrc(name),
+    const guardianSrcs = name => [partnerSrc(Object.hasOwn(picArt, name) ? picArt[name] : null), picSrc(name),
                              'art/' + artOf(name) + '.png'].filter(Boolean);
-    function petImg(name, cls) {
+    function guardianImg(name, cls) {
       const img = el('img', cls || 'pa');
-      const srcs = petSrcs(name);
+      const srcs = guardianSrcs(name);
       let at = 0;
       img.src = srcs[0];
       img.alt = '';
@@ -589,17 +589,17 @@
       return img;
     }
 
-    // Nicknames for pets ("Quirky Nomad #5770" -> "Dad's"), kept in this browser
-    // only: the boards keep the generated names. petLabel() for plain text,
-    // petEl() for a name you click to set one.
-    const NICK_STORE = 'vpetNicknames';
+    // Nicknames for Guardians ("Quirky Nomad #5770" -> "Dad's"), kept in this browser
+    // only: the boards keep the generated names. guardianLabel() for plain text,
+    // guardianEl() for a name you click to set one.
+    const NICK_STORE = 'guardianNicknames';
     let nicks = {};
     try { nicks = JSON.parse(localStorage.getItem(NICK_STORE) || '{}') || {}; } catch (_) { nicks = {}; }
     const nickOf = name => (name && Object.hasOwn(nicks, name)) ? nicks[name] : '';
-    const petLabel = name => nickOf(name) ? `${nickOf(name)} (${name})` : (name || '');
-    function petEl(name) {
+    const guardianLabel = name => nickOf(name) ? `${nickOf(name)} (${name})` : (name || '');
+    function guardianEl(name) {
       const s = el('span', 'pn');
-      s.append(petImg(name));
+      s.append(guardianImg(name));
       if (nickOf(name)) s.append(nickOf(name) + ' ', el('span', 'real', name));
       else s.append(name);
       s.title = (nickOf(name) ? 'Change the' : 'Set a') + ' nickname for ' + name;
@@ -788,7 +788,7 @@
       history.replaceState(null, '', location.pathname + location.search + (h ? '#' + h : ''));
     }
 
-    // How your pet shows up on node n: champion, damage-board rank, rarest find.
+    // How your Guardian shows up on node n: champion, damage-board rank, rarest find.
     function involvement(n) {
       const me = state.pet.trim().toLowerCase();
       if (!me) return { lead: false, rank: 0, found: false, any: false };
@@ -897,7 +897,7 @@
       });
 
       // Nodes: pulsing diamonds drawn around (0, 0) and placed (and scaled)
-      // by placeMarkers; a white outer ring marks the ones your pet leads.
+      // by placeMarkers; a white outer ring marks the ones your Guardian leads.
       const diamond = r => `0,${-r} ${r},0 0,${r} ${-r},0`;
       dotEls = rows.map((n, i) => {
         const k = fkey(n), col = kcolor(k), t = powers[i];
@@ -916,7 +916,7 @@
                                       fill: n.is_super ? SUPER_COLOR : '#fff', 'fill-opacity': 0.85 }));
         }
         g.append(svgEl('polygon', { class: 'mine-ring', points: diamond(25), fill: 'none', stroke: '#fff', 'stroke-width': 1.5, filter: 'url(#glow)' }));
-        // A virtual node (lives online; pets reach it over home Wi-Fi): a dashed ring.
+        // A virtual node (lives online; Guardians reach it over home Wi-Fi): a dashed ring.
         g.append(svgEl('polygon', { class: 'ring', points: diamond(16), fill: 'none', stroke: col, 'stroke-width': 1.5 + 1.5 * t, filter: t > 0.7 ? 'url(#glow2)' : 'url(#glow)',
                                     'stroke-dasharray': n.is_virtual ? '4 3' : 'none' }));
         if (k === INFECTED) g.append(virusIcon());
@@ -986,7 +986,7 @@
       tip.style.setProperty('--c', n.is_super ? SUPER_COLOR : kcolor(k));
       const hero = el('div', 'hero'), body = el('div', 'body');
       if (c && !sick) {
-        hero.append(petImg(c.name, 'pa-big'), el('div', null, nickOf(c.name) || c.name));
+        hero.append(guardianImg(c.name, 'pa-big'), el('div', null, nickOf(c.name) || c.name));
         if (nickOf(c.name)) hero.append(el('div', 'real', c.name));
       } else {
         hero.append(el('div', 'big-ic', sick ? '☣' : n.is_super ? '★' : '◇'), el('div', 'real', sick ? 'Infected' : 'Open'));
@@ -994,7 +994,7 @@
       body.append(el('div', 'kind', n.is_super ? '★ ' + superTitle(n) : sick ? 'Infected node' : n.is_virtual ? 'Virtual node' : 'Node'),
                   el('div', 'where', n.name));
       if (sick) {
-        body.append(el('div', 'line', 'Nobody can claim it' + (b.virus && b.virus.from ? ' · took over from ' + petLabel(b.virus.from) : '')));
+        body.append(el('div', 'line', 'Nobody can claim it' + (b.virus && b.virus.from ? ' · took over from ' + guardianLabel(b.virus.from) : '')));
       } else if (c) {
         body.append(el('div', 'line', [c.faction || 'no faction', c.class && c.class !== 'None' ? c.class : '', 'Lv ' + c.level].filter(Boolean).join(' · ')));
       } else {
@@ -1022,7 +1022,7 @@
         });
         body.append(el('div', 'line', 'Top damage'), ol);
       }
-      if (n.rarest) body.append(el('div', 'line', '🔍 ' + n.rarest.item + ' · ' + petLabel(n.rarest.by)));
+      if (n.rarest) body.append(el('div', 'line', '🔍 ' + n.rarest.item + ' · ' + guardianLabel(n.rarest.by)));
       body.append(el('div', 'foot', 'Strength ' + ['▱▱▱', '▰▱▱', '▰▰▱', '▰▰▰'][pips(powers[i] || 0)] + ' · ' + terrainOf(n)
                                    + (n.updated_day ? ' · updated ' + n.updated_day : '')));
       tip.replaceChildren(hero, body);
@@ -1046,9 +1046,9 @@
         dotEls[i].classList.toggle('mine', involvement(n).lead);
       });
       renderLegend();
-      renderPet();
+      renderGuardian();
       renderCards();
-      $('petClear').hidden = !state.pet;
+      $('guardianClear').hidden = !state.pet;
       writeHash();
     }
 
@@ -1074,7 +1074,7 @@
     }
 
     // "Your pet": a one-line summary; the map rings what it leads, the cards narrow to it.
-    function renderPet() {
+    function renderGuardian() {
       const names = new Set();
       for (const n of state.rows) {
         if (n.champion) names.add(n.champion.name);
@@ -1084,7 +1084,7 @@
       for (const v of [...names]) if (nickOf(v)) names.add(nickOf(v));
       $('pets').replaceChildren(...[...names].filter(Boolean).sort().map(v => { const o = el('option'); o.value = v; return o; }));
 
-      const line = $('petline');
+      const line = $('guardianline');
       if (!state.pet.trim()) { line.hidden = true; return; }
       let lead = 0, boards = 0;
       for (const n of state.rows) {
@@ -1102,7 +1102,7 @@
     }
 
     // Node details: built only while the section is open (closed by default).
-    let detailsOpen = localStorage.getItem('vpetDetailsOpen') === '1';
+    let detailsOpen = localStorage.getItem('guardianDetailsOpen') === '1';
     function renderCards() {
       const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
       const shown = state.rows.filter(visible).sort((a, b) => (b.is_super ? 1 : 0) - (a.is_super ? 1 : 0) || byName(a, b));
@@ -1143,11 +1143,11 @@
 
       if (infected(n)) {
         const from = n.boss.virus.from;
-        box.append(el('div', 'champ virus-text', '☣ Infected' + (from ? ': took over from ' + petLabel(from) : '')),
+        box.append(el('div', 'champ virus-text', '☣ Infected' + (from ? ': took over from ' + guardianLabel(from) : '')),
                    el('div', 'meta', `Nobody can claim it. Beat ${n.boss.name} once to cure it.`));
       } else if (n.champion) {
         const c = n.champion, who = el('div', 'champ' + (inv.lead ? ' me' : ''), '⚔ ');
-        who.append(petEl(c.name));
+        who.append(guardianEl(c.name));
         if (inv.lead) who.append(' ', el('span', 'tag you', 'You'));
         box.append(who, el('div', 'meta', [c.faction || 'no faction', c.class, 'Lv ' + c.level].filter(Boolean).join(' · ')));
       } else {
@@ -1168,7 +1168,7 @@
         const ol = el('ol');
         n.top5.slice(0, 3).forEach((r, i) => {
           const li = el('li', inv.rank === i + 1 ? 'me' : null), row = el('div', 'row'), who = el('span', 'who');
-          who.append(petEl(r.name));
+          who.append(guardianEl(r.name));
           if (r.faction) li.style.color = kcolor(r.faction);
           row.append(who, el('span', 'dmg', fmt(r.damage)));
           li.append(row);
@@ -1178,7 +1178,7 @@
       }
       if (n.rarest) {
         const find = el('div', 'find' + (inv.found ? ' me' : ''), '🔍 ' + n.rarest.item + ' · ');
-        find.append(petEl(n.rarest.by));
+        find.append(guardianEl(n.rarest.by));
         box.append(find);
       }
       return box;
@@ -1187,12 +1187,12 @@
     // ---- Controls ----
     $('detailsToggle').onclick = () => {
       detailsOpen = !detailsOpen;
-      localStorage.setItem('vpetDetailsOpen', detailsOpen ? '1' : '0');
+      localStorage.setItem('guardianDetailsOpen', detailsOpen ? '1' : '0');
       renderCards();
     };
     $('pet').value = state.pet;
     $('pet').addEventListener('input', e => { state.pet = e.target.value; applyState(); });
-    $('petClear').onclick = () => { state.pet = ''; $('pet').value = ''; applyState(); };
+    $('guardianClear').onclick = () => { state.pet = ''; $('pet').value = ''; applyState(); };
     $('map').addEventListener('click', () => { if (state.node !== null) select(null); });
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && !e.target.closest('input') && state.node !== null) select(null);
@@ -1200,7 +1200,7 @@
     new ResizeObserver(() => { if (dotEls.length) placeMarkers(); }).observe($('map'));
 
     // The demo's layout: layout.ts's tree growth, compact (own random, so the
-    // demo pets keep their names). [{x, y, physical}] in the order they appear.
+    // demo Guardians keep their names). [{x, y, physical}] in the order they appear.
     function demoTree(count) {
       let seed = 7;
       const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -1241,7 +1241,7 @@
       return out;
     }
 
-    // ?demo: about half the pets get catalog art (art/partners/index.json), the
+    // ?demo: about half the Guardians get catalog art (art/partners/index.json), the
     // rest keep the board's art ID, like a mix of new and old firmware.
     async function demoArts(rows) {
       let ids = [];
@@ -1284,7 +1284,7 @@
           is_virtual: !spots[i].physical,
         };
       });
-      // One pet leads two nodes, hits a third and found something, to try "Your pet" with.
+      // One Guardian leads two nodes, hits a third and found something, to try "Your pet" with.
       const me = rows[0].champion;
       rows[3].champion = { ...me };
       rows[3].top5 = [{ name: me.name, faction: me.faction, class: me.class, damage: 1500 }, ...rows[3].top5];
@@ -1321,7 +1321,7 @@
       state.rows = prev;
       return r;
     };
-    const petLine = c => [c.faction || 'no faction', c.class && c.class !== 'None' ? c.class : '', 'Lv ' + c.level].filter(Boolean).join(' · ');
+    const guardianLine = c => [c.faction || 'no faction', c.class && c.class !== 'None' ? c.class : '', 'Lv ' + c.level].filter(Boolean).join(' · ');
     function changes(before, after) {
       if (!before) return [];
       const old = new Map(before.map(n => [String(n.node_id), n])), out = [];
@@ -1331,7 +1331,7 @@
         const c = n.champion, oc = o.champion, b = n.boss || {}, ob = o.boss || {};
         if (!infected(o) && infected(n)) {
           out.push({ n, kind: 'virus', icon: '☣', title: 'Infected', col: VIRUS_COLOR, big: false,
-                     lines: [`${b.name} took it${b.virus && b.virus.from ? ' from ' + petLabel(b.virus.from) : ''}`,
+                     lines: [`${b.name} took it${b.virus && b.virus.from ? ' from ' + guardianLabel(b.virus.from) : ''}`,
                              `Virus Lv ${b.level} · ${fmt(b.maxHp)} HP · beat it once to clean it out`] });
         } else if (infected(o) && !infected(n)) {
           const by = (n.top5 && n.top5[0]) || (o.top5 && o.top5[0]);
@@ -1339,11 +1339,11 @@
                      lines: [by ? `Beat ${ob.name || 'the virus'}${by.faction ? ' · ' + by.faction : ''}` : `${ob.name} is gone`, 'Open to claim again'] });
         } else if (c && !oc) {
           out.push({ n, pet: c.name, kind: 'claim', icon: '⚑', title: n.is_super ? 'Super Gateway claimed' : 'Node claimed', col: kcolor(c.faction || UNALIGNED), big: !!n.is_super,
-                     lines: [petLine(c), `Boss ${b.name || bossLabel(b)} Lv ${b.level} · ${pct(b.hp || 0, b.maxHp || 0)} HP`] });
+                     lines: [guardianLine(c), `Boss ${b.name || bossLabel(b)} Lv ${b.level} · ${pct(b.hp || 0, b.maxHp || 0)} HP`] });
         } else if (c && oc && c.name !== oc.name) {
           const flip = (c.faction || '') !== (oc.faction || '');
           out.push({ n, pet: c.name, kind: 'flip', icon: '⚔', title: flip ? 'Changed hands' : 'New champion', col: kcolor(c.faction || UNALIGNED), big: flip || !!n.is_super,
-                     lines: [petLine(c), `Took it from ${petLabel(oc.name)}${flip && oc.faction ? ' (' + oc.faction + ')' : ''}`] });
+                     lines: [guardianLine(c), `Took it from ${guardianLabel(oc.name)}${flip && oc.faction ? ' (' + oc.faction + ')' : ''}`] });
         }
         if (!infected(n) && !infected(o) && (b.level || 1) > (ob.level || 1)) {
           const top = n.top5 && n.top5[0];
@@ -1379,10 +1379,10 @@
       while (box.children.length >= MAX_TOASTS) box.firstChild.remove();
       const t = el('div', 'toast' + (e.big ? ' big' : '') + (e.kind === 'virus' ? ' virus' : ''));
       t.style.setProperty('--c', e.col);
-      // Two columns: the pet (picture + name) or the big icon on the left, the details on the right.
+      // Two columns: the Guardian (picture + name) or the big icon on the left, the details on the right.
       const hero = el('div', 'hero'), body = el('div', 'body'), kind = el('div', 'kind');
       if (e.pet) {
-        hero.append(petImg(e.pet, null), el('div', null, nickOf(e.pet) || e.pet));
+        hero.append(guardianImg(e.pet, null), el('div', null, nickOf(e.pet) || e.pet));
         if (nickOf(e.pet)) hero.append(el('div', 'real', e.pet));
         if (e.note) hero.append(el('div', 'real', e.note));
         kind.append(el('span', 'ic', e.icon));
@@ -1469,7 +1469,7 @@
         }
         unlockPage();
         show(out.nodes || []);
-        // New pictures: everything else that shows pets (drawn before they came) too.
+        // New pictures: everything else that shows Guardians (drawn before they came) too.
         if (want.length || artsChanged) {
           renderNicks();
           if (actState.events) renderActivity();
@@ -1489,7 +1489,7 @@
       $('lockNote').textContent = why;
       $('lockNote').hidden = !why;
       setStatus('locked');
-      vpetAuth.renderSignIn($('lockSignin'), (text, isError) => {
+      guardianAuth.renderSignIn($('lockSignin'), (text, isError) => {
         $('lockNote').textContent = text;
         $('lockNote').hidden = !text;
         $('lockNote').classList.toggle('err', !!isError);
@@ -1513,13 +1513,13 @@
     };
     $('lockLink').onclick = async () => {
       localStorage.removeItem(ADMIN_KEY_STORE);
-      await vpetAuth.signOut();
+      await guardianAuth.signOut();
       location.reload();
     };
 
     // Something new every few seconds in the demo; every 20 s live (not while the tab is hidden).
-    vpetAuth.ready.then(() => load());
-    vpetAuth.onChange(() => { load(); if (state.tab === 'activity') loadActivity(true); if (ADMIN) loadAdmin(); if (state.tab === 'members') loadMembers(); });
+    guardianAuth.ready.then(() => load());
+    guardianAuth.onChange(() => { load(); if (state.tab === 'activity') loadActivity(true); if (ADMIN) loadAdmin(); if (state.tab === 'members') loadMembers(); });
     setInterval(() => { if (!document.hidden) load(); }, DEMO ? 6000 : 20 * 1000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
 
@@ -1748,7 +1748,7 @@
           const timeText = it.hasClock ? when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
             : when.toLocaleDateString([], { month: 'short', day: 'numeric' });
           const w = el('span', 'w');
-          if (it.pet) w.append(petImg(it.pet));
+          if (it.pet) w.append(guardianImg(it.pet));
           w.append(it.who);
           li.append(el('span', 't', timeText), el('span', 'k', EVENT_LABELS[it.type] || it.type), w);
           ul.append(li);
@@ -1768,9 +1768,9 @@
         const when = new Date(parts[0], parts[1] - 1, parts[2]);   // local midnight of that date
         const tags = [n.is_super ? 'super' : n.is_virtual ? 'virtual' : null, (n.boss && n.boss.virus) ? 'infected' : null].filter(Boolean);
         const who = n.name + (tags.length ? ' (' + tags.join(', ') + ')' : '');
-        // The node's champion (or, infected, the pet it took over from): its picture on the row.
+        // The node's champion (or, infected, the Guardian it took over from): its picture on the row.
         const pet = (n.champion && n.champion.name) || (n.boss && n.boss.virus && n.boss.virus.from) || '';
-        out.push({ when, type: 'sync', get who() { return who + (pet ? ' · ' + petLabel(pet) : ''); }, pet, what: 'Board updated', hasClock: false });
+        out.push({ when, type: 'sync', get who() { return who + (pet ? ' · ' + guardianLabel(pet) : ''); }, pet, what: 'Board updated', hasClock: false });
       }
       return out;
     }
@@ -1839,7 +1839,7 @@
         }
         const result = !v.ok ? 'refused' : v.won === true ? 'won' : v.won === false ? 'lost' : 'ok';
         const li = el('li'), w = el('span', 'w');
-        w.append(v.pet_name ? petEl(v.pet_name) : '(unknown Guardian)', ` · ${v.action || '?'} · ${result}`);
+        w.append(v.guardian_name ? guardianEl(v.guardian_name) : '(unknown Guardian)', ` · ${v.action || '?'} · ${result}`);
         li.append(el('span', 't', when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })),
                   el('span', 'k', v.node_name), w);
         ul.append(li);
@@ -1884,7 +1884,7 @@
         edit.onclick = () => editNick(name);
         del.onclick = () => setNick(name, '');
         const nm = el('b');
-        nm.append(petImg(name), nicks[name]);
+        nm.append(guardianImg(name), nicks[name]);
         li.append(nm, el('span', 'real', name), edit, del);
         return li;
       }));
@@ -2110,7 +2110,7 @@
         // The board's own art id, for a Guardian the map hasn't given one.
         if (name && r.art && !Object.hasOwn(picArt, name)) picArt[name] = r.art;
         const li = el('li'), nm = el('span', 'nm');
-        if (name) nm.append(petEl(name)); else nm.append('(unnamed Guardian)');
+        if (name) nm.append(guardianEl(name)); else nm.append('(unnamed Guardian)');
         li.append(el('span', 'rk', '#' + r.rank), nm, el('span', 'vl', fmt(r.value)));
         list.append(li);
       }
