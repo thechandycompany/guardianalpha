@@ -414,6 +414,10 @@
         <button class="act-retry" id="memClose">Close joining</button>
         <label>seat cap <input id="memCap" type="number" min="0" max="10000"></label>
         <button class="act-retry" id="memCapSave">Save cap</button>
+        <span id="memVirus"></span>
+        <button class="act-retry" id="memVirusToggle" hidden>Turn the virus off</button>
+        <label id="memVirusNight" hidden>per night <input id="memVirusPer" type="number" min="0" max="60"></label>
+        <button class="act-retry" id="memVirusSave" hidden>Save</button>
         <button class="act-retry" id="memRefresh">Refresh</button>
       </div>
       <div class="mem-link" id="memLink" hidden></div>
@@ -993,7 +997,7 @@
       if (sick) {
         body.append(el('div', 'line', 'Nobody can claim it' + (b.virus && b.virus.from ? ' · took over from ' + guardianLabel(b.virus.from) : '')));
       } else if (c) {
-        body.append(el('div', 'line', [c.faction || 'no faction', c.class && c.class !== 'None' ? c.class : '', 'Lv ' + c.level].filter(Boolean).join(' · ')));
+        body.append(el('div', 'line', guardianLine(c)));
       } else {
         body.append(el('div', 'line', 'No champion yet: open to claim'));
       }
@@ -1146,7 +1150,7 @@
         const c = n.champion, who = el('div', 'champ' + (inv.lead ? ' me' : ''), '⚔ ');
         who.append(guardianEl(c.name));
         if (inv.lead) who.append(' ', el('span', 'tag you', 'You'));
-        box.append(who, el('div', 'meta', [c.faction || 'no faction', c.class, 'Lv ' + c.level].filter(Boolean).join(' · ')));
+        box.append(who, el('div', 'meta', guardianLine(c)));
       } else {
         box.append(el('div', 'meta', 'Open: no champion yet'));
       }
@@ -1318,7 +1322,10 @@
       state.rows = prev;
       return r;
     };
-    const guardianLine = c => [c.faction || 'no faction', c.class && c.class !== 'None' ? c.class : '', 'Lv ' + c.level].filter(Boolean).join(' · ');
+    // Class labels: the boards keep the wire names ("Scout", "Fighter"); players see Seeker / Vanguard (2026-10-21).
+    const CLASS_LABEL = { Scout: 'Seeker', Fighter: 'Vanguard' };
+    const classLabel = k => (k && k !== 'None') ? (CLASS_LABEL[k] || k) : '';
+    const guardianLine = c => [c.faction || 'no faction', classLabel(c.class), 'Lv ' + c.level].filter(Boolean).join(' · ');
     function changes(before, after) {
       if (!before) return [];
       const old = new Map(before.map(n => [String(n.node_id), n])), out = [];
@@ -1976,6 +1983,14 @@
       $('memSeats').textContent = st ? `seats: ${st.seats_used} of ${st.seat_cap}` : 'seats: …';
       $('memJoining').textContent = st ? (st.joining ? 'joining: open' : 'joining: closed') : '';
       if (st && document.activeElement !== $('memCap')) $('memCap').value = st.seat_cap;
+      // The night virus's switch (admin-accounts "virus_set").
+      const v = memState.virus;
+      $('memVirus').textContent = v ? `night virus: ${v.enabled ? 'on' : 'off'} (${v.per_night} a night, 12-${v.last_hour}am)` : '';
+      for (const id of ['memVirusToggle', 'memVirusNight', 'memVirusSave']) $(id).hidden = !v;
+      if (v) {
+        $('memVirusToggle').textContent = v.enabled ? 'Turn the virus off' : 'Turn the virus on';
+        if (document.activeElement !== $('memVirusPer')) $('memVirusPer').value = v.per_night;
+      }
       const body = $('memRows');
       body.replaceChildren();
       for (const a of memState.accounts) {
@@ -2035,6 +2050,7 @@
         const out = await adminFetch('admin-accounts');
         memState.accounts = out.accounts || [];
         memState.settings = out.settings || null;
+        memState.virus = out.virus || null;
         memState.actions = out.actions || [];
         memState.guardians = out.guardians || [];
         renderMembers();
@@ -2055,6 +2071,12 @@
     $('memClose').onclick = () => { if (confirm('Close joining? The current link stops working.')) memDo({ op: 'close_link' }, () => { $('memLink').hidden = true; }); };
     $('memCapSave').onclick = () => memDo({ op: 'set_cap', seat_cap: parseInt($('memCap').value, 10) }, () => memNote('Saved the seat cap.'));
     $('memRefresh').onclick = () => loadMembers();
+    $('memVirusToggle').onclick = () => {
+      const on = !(memState.virus && memState.virus.enabled);
+      if (!on && !confirm('Turn the night virus off? No nodes get infected until it is back on (infected ones stay infected).')) return;
+      memDo({ op: 'virus_set', enabled: on }, () => memNote(on ? 'The night virus is on.' : 'The night virus is off.'));
+    };
+    $('memVirusSave').onclick = () => memDo({ op: 'virus_set', per_night: parseInt($('memVirusPer').value, 10) }, () => memNote('Saved the virus count.'));
 
     // ---- Boards (admin-boards: the snapshots pg_cron rebuilds every 5 minutes) ----
     const BRD_PERIODS = ['day', 'week', 'all'];
