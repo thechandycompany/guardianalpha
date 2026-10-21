@@ -6,7 +6,14 @@
 // Sign-in ways: an emailed link always; the buttons in PROVIDERS once each
 // is turned on in the Supabase dashboard (Authentication > Sign In /
 // Providers). Plan: .agents/tasks/online-boards-and-registration/plan.md.
-window.vpetAuth = (() => {
+window.guardianAuth = (() => {
+  // Saved under the old project name (vpet*) before the guardian rename: move them over once.
+  for (const k of ['AdminKey', 'Nicknames', 'DetailsOpen', 'JoinToken']) {
+    const was = localStorage.getItem('vpet' + k);
+    if (was !== null && localStorage.getItem('guardian' + k) === null) localStorage.setItem('guardian' + k, was);
+    localStorage.removeItem('vpet' + k);
+  }
+
   const SUPABASE_URL = 'https://fkeiqvlwujxjlxaducge.supabase.co';
   const PUBLISHABLE_KEY = 'sb_publishable_JBw_SlIMnqg6k96ZsdqabQ_n50CMqfZ';
   // Add 'google', 'apple', 'discord' here as each is turned on.

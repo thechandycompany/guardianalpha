@@ -6,7 +6,7 @@
   <!-- Closed alpha: keep it out of search engines. -->
   <meta name="robots" content="noindex, nofollow">
   <meta name="referrer" content="no-referrer">
-  <title>Join the alpha · virtpet</title>
+  <title>Join the alpha · guardian</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Cpolygon points=%228,1 15,8 8,15 1,8%22 fill=%22%2338d6e8%22/%3E%3C/svg%3E">
   <style>
     :root { --bg: #07090f; --card: #0b0f18; --line2: #2a3850; --text: #d8e3ef; --muted: #7d8ba0; --accent: #38d6e8; }
@@ -45,7 +45,7 @@
 </head>
 <body>
   <div class="page">
-    <h1>virtpet</h1>
+    <h1>guardian</h1>
     <div class="sub">closed alpha</div>
 
     <div class="step" id="signin" hidden>
@@ -95,7 +95,7 @@
     // until we post it) and is kept in this browser until it's used, so it
     // survives the trip out to the sign-in email and back.
     const $ = id => document.getElementById(id);
-    const TOKEN_STORE = 'vpetJoinToken';
+    const TOKEN_STORE = 'guardianJoinToken';
     const hashToken = new URLSearchParams(location.hash.slice(1)).get('t');
     if (hashToken) {
       localStorage.setItem(TOKEN_STORE, hashToken);
@@ -154,7 +154,7 @@
               e.preventDefault();
               if (!confirm(`Move ${g.public_name || 'this Guardian'} to the new Guardian? The old one stops counting.`)) return;
               go.disabled = true;
-              const res = await vpetAuth.call('account', { method: 'POST', body: { op: 'relink', handle: g.handle, code: input.value } });
+              const res = await guardianAuth.call('account', { method: 'POST', body: { op: 'relink', handle: g.handle, code: input.value } });
               go.disabled = false;
               if (!res.ok) { note(LINK_ERRORS[res.out.error] || "Couldn't move it: " + (res.out.error || 'try again'), true); return; }
               note('Moved. The new Guardian picks it up the next time it goes online.');
@@ -184,7 +184,7 @@
       e.preventDefault();
       const btn = $('linkForm').querySelector('button');
       btn.disabled = true;
-      const res = await vpetAuth.call('account', { method: 'POST', body: { op: 'link', code: $('linkCode').value } });
+      const res = await guardianAuth.call('account', { method: 'POST', body: { op: 'link', code: $('linkCode').value } });
       btn.disabled = false;
       if (!res.ok) { note(LINK_ERRORS[res.out.error] || "Couldn't link it: " + (res.out.error || 'try again'), true); return; }
       $('linkCode').value = '';
@@ -193,15 +193,15 @@
     };
 
     async function refresh() {
-      const s = vpetAuth.session();
+      const s = guardianAuth.session();
       $('who').hidden = !s;
-      $('whoEmail').textContent = vpetAuth.email();
+      $('whoEmail').textContent = guardianAuth.email();
       if (!s) {
-        vpetAuth.renderSignIn($('signinBox'), note);
+        guardianAuth.renderSignIn($('signinBox'), note);
         show('signin');
         return;
       }
-      const { ok, out } = await vpetAuth.call('account');
+      const { ok, out } = await guardianAuth.call('account');
       if (!ok) { show('done', ''); note("Couldn't load your account: " + (out.error || 'try again'), true); return; }
       const a = out.account;
       if (a.revoked) return show('done', 'Your alpha access was turned off. Ask the admin if that seems wrong.');
@@ -214,7 +214,7 @@
       }
       const token = localStorage.getItem(TOKEN_STORE);
       if (!token) return show('done', 'Open the invite link you were sent to join.');
-      const res = await vpetAuth.call('account', { method: 'POST', body: { op: 'join', token } });
+      const res = await guardianAuth.call('account', { method: 'POST', body: { op: 'join', token } });
       if (res.ok) { localStorage.removeItem(TOKEN_STORE); return refresh(); }
       const why = {
         'bad link': "That invite link doesn't work any more. Ask for the new one.",
@@ -228,14 +228,14 @@
     $('ageDate').max = new Date().toISOString().slice(0, 10);
     $('ageForm').onsubmit = async e => {
       e.preventDefault();
-      const res = await vpetAuth.call('account', { method: 'POST', body: { op: 'age', birthdate: $('ageDate').value } });
+      const res = await guardianAuth.call('account', { method: 'POST', body: { op: 'age', birthdate: $('ageDate').value } });
       if (!res.ok) { note("That date didn't work: " + (res.out.error || 'try again'), true); return; }
       note('');
       refresh();
     };
-    $('signOut').onclick = async () => { await vpetAuth.signOut(); note(''); refresh(); };
-    vpetAuth.onChange(() => refresh());
-    vpetAuth.ready.then(refresh);
+    $('signOut').onclick = async () => { await guardianAuth.signOut(); note(''); refresh(); };
+    guardianAuth.onChange(() => refresh());
+    guardianAuth.ready.then(refresh);
   </script>
 </body>
 </html>
