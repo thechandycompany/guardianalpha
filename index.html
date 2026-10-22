@@ -33,7 +33,7 @@
     .lock { max-width: 340px; margin: 60px auto; text-align: center; font-size: 13px; color: var(--muted); }
     .lock form { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
     .lock input { background: var(--card); border: 1px solid var(--line2); border-radius: 4px; color: var(--text); padding: 6px 10px; font-size: 13px; min-width: 0; flex: 1; }
-    .locked .tabs, .locked #panel-board, .locked #panel-activity, .locked #panel-members { display: none !important; }
+    .locked .tabs, .locked #panel-board, .locked #panel-activity, .locked #panel-members, .locked #panel-me { display: none !important; }
     .lock .signin, .lock .signin-providers { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
     .lock .or { margin-top: 18px; font-size: 11px; }
     /* ---- Members panel (admin-accounts) ---- */
@@ -51,6 +51,19 @@
     .brd-list .nm .pa { width: 2em; height: 2em; vertical-align: -0.6em; margin-right: 8px; }
     .brd-list .vl { font-variant-numeric: tabular-nums; }
     .brd-list .placing { color: var(--muted); font-size: 11px; }
+    .me-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 4px 0 12px; font-size: 12px; color: var(--muted); }
+    .me-pick select { background: var(--card); border: 1px solid var(--line2); border-radius: 4px; color: var(--text); padding: 3px 8px; }
+    .me-head { display: flex; align-items: center; gap: 14px; margin: 6px 0 12px; }
+    .me-head img { width: 72px; height: 72px; image-rendering: pixelated; background: var(--card); border: 1px solid var(--line2); border-radius: 6px; }
+    .me-head .nm { font-size: 18px; }
+    .me-head .sub2 { font-size: 12px; color: var(--muted); }
+    .me-art { display: flex; flex-wrap: wrap; gap: 10px; margin: 6px 0 12px; }
+    .me-art button { background: var(--card); border: 1px solid var(--line2); border-radius: 6px; padding: 6px; cursor: pointer; color: var(--text); font-size: 11px; width: 84px; }
+    .me-art button[aria-pressed="true"] { border-color: var(--accent); }
+    .me-art button img { width: 64px; height: 64px; image-rendering: pixelated; display: block; margin: 0 auto 4px; }
+    .me-art .lockd img { opacity: 0.55; }
+    .me-art .unl { display: block; margin: 4px auto 0; font-size: 10px; padding: 1px 6px; width: auto; }
+    .me-pick input { background: var(--card); border: 1px solid var(--line2); border-radius: 4px; color: var(--text); padding: 3px 8px; width: 70px; }
     .mem-log { list-style: none; padding: 0; margin: 8px 0 0; font-size: 12px; color: var(--muted); }
 
     /* ---- The map: the whole grid, fitted to the width ---- */
@@ -334,6 +347,7 @@
       <button class="tab" id="tab-activity" role="tab" aria-controls="panel-activity" aria-selected="false" tabindex="-1">Activity log</button>
       <button class="tab" id="tab-members" role="tab" aria-controls="panel-members" aria-selected="false" tabindex="-1">Members</button>
       <button class="tab" id="tab-boards" role="tab" aria-controls="panel-boards" aria-selected="false" tabindex="-1">Boards</button>
+      <button class="tab" id="tab-me" role="tab" aria-controls="panel-me" aria-selected="false" tabindex="-1">My Guardian</button>
     </div>
 
     <div id="panel-board" role="tabpanel" aria-labelledby="tab-board" tabindex="0">
@@ -413,6 +427,8 @@
       </div>
       <div class="mem-link" id="memLink" hidden></div>
       <div class="act-note" id="memNote" hidden></div>
+      <!-- Unlocked with the key (read-only here): sign in as an admin to change things. -->
+      <div class="act-note" id="memSignin" hidden></div>
       <table class="mem-table">
         <thead><tr><th>Account</th><th>Signs in with</th><th>Age screen</th><th>Alpha</th><th>Since</th><th></th></tr></thead>
         <tbody id="memRows"></tbody>
@@ -426,6 +442,39 @@
       <div class="act-note">Admin log</div>
       <ul class="mem-log" id="memLog"></ul>
     </div><!-- /panel-members -->
+
+    <!-- My Guardian (my-guardian): a signed-in owner's Guardians, what the
+         server knows about them, and their picture from the catalog (the
+         Guardian switches with its next node list). An admin sees them all. -->
+    <div id="panel-me" role="tabpanel" aria-labelledby="tab-me" tabindex="0" hidden>
+      <div class="me-pick">
+        <label id="meWhichWrap" hidden>Guardian <select id="meWhich"></select></label>
+        <button class="act-retry" id="meRefresh">Refresh</button>
+      </div>
+      <!-- Creds: money buys cred packs, creds unlock things (my-guardian). -->
+      <div class="me-pick" id="meShop" hidden>
+        <span id="meCreds">creds: …</span>
+        <span id="mePacks"></span>
+        <span id="meGrantWrap" hidden><label>give me <input id="meGrantN" type="number" min="1" max="100000" value="500"></label>
+          <button class="act-retry" id="meGrant">Grant creds</button></span>
+      </div>
+      <div class="act-note" id="meNote" hidden></div>
+      <div id="meSignin" hidden></div>
+      <div id="meBody" hidden>
+        <div class="me-head">
+          <img id="meImg" alt="">
+          <div><div class="nm" id="meName"></div><div class="sub2" id="meSub"></div></div>
+        </div>
+        <table class="mem-table">
+          <thead><tr><th></th><th>Today</th><th>This week</th><th>All time</th><th>Rank</th></tr></thead>
+          <tbody id="meScores"></tbody>
+        </table>
+        <div class="act-note">Nodes held</div>
+        <ul class="mem-log" id="meNodes"></ul>
+        <div class="act-note" id="meArtTitle">Picture</div>
+        <div class="me-art" id="meArt"></div>
+      </div>
+    </div><!-- /panel-me -->
 
     <!-- Boards: registered Guardians' scores by day / week / all time
          (admin-boards, from board_snapshots: rebuilt every 5 minutes). -->
@@ -763,7 +812,7 @@
     const HASH = new URLSearchParams(RAW_HASH === 'activity' ? 'tab=activity' : RAW_HASH);
     const state = {
       rows: [], faction: HASH.get('f'), pet: HASH.get('pet') || '', node: HASH.get('node'),
-      tab: ['activity', 'members', 'boards'].includes(HASH.get('tab')) ? HASH.get('tab') : 'board',
+      tab: ['activity', 'members', 'boards', 'me'].includes(HASH.get('tab')) ? HASH.get('tab') : 'board',
     };
     let zoneEls = [], dotEls = [], cardEls = [];
 
@@ -1503,7 +1552,7 @@
 
     // Something new every few seconds in the demo; every 20 s live (not while the tab is hidden).
     guardianAuth.ready.then(() => load());
-    guardianAuth.onChange(() => { load(); if (state.tab === 'activity') loadActivity(true); if (ADMIN) loadAdmin(); if (state.tab === 'members') loadMembers(); });
+    guardianAuth.onChange(() => { load(); if (state.tab === 'activity') loadActivity(true); if (ADMIN) loadAdmin(); if (state.tab === 'members') loadMembers(); if (state.tab === 'me') loadMe(); });
     setInterval(() => { if (!document.hidden) load(); }, DEMO ? 6000 : 20 * 1000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
 
@@ -1879,8 +1928,8 @@
     renderNicks();
 
     // ---- Tabs ----
-    const TAB_IDS = ['tab-board', 'tab-activity', 'tab-members', 'tab-boards'];
-    const TABS = ['board', 'activity', 'members', 'boards'];
+    const TAB_IDS = ['tab-board', 'tab-activity', 'tab-members', 'tab-boards', 'tab-me'];
+    const TABS = ['board', 'activity', 'members', 'boards', 'me'];
     function selectTab(which, focus) {
       state.tab = which;
       const activeId = TAB_IDS[TABS.indexOf(which)];
@@ -1894,8 +1943,10 @@
       $('panel-activity').hidden = which !== 'activity';
       $('panel-members').hidden = which !== 'members';
       $('panel-boards').hidden = which !== 'boards';
+      $('panel-me').hidden = which !== 'me';
       writeHash();
       if (which === 'members') loadMembers();
+      else if (which === 'me') loadMe();
       else if (which === 'boards') loadBoards();
       else if (which === 'activity') {
         if (!actState.started) { actState.started = true; loadActivity(); }
@@ -1927,6 +1978,8 @@
     $('tab-members').addEventListener('keydown', onTabKey);
     $('tab-boards').onclick = () => selectTab('boards', false);
     $('tab-boards').addEventListener('keydown', onTabKey);
+    $('tab-me').onclick = () => selectTab('me', false);
+    $('tab-me').addEventListener('keydown', onTabKey);
 
     function setGran(g) {
       actState.gran = g;
@@ -1944,6 +1997,187 @@
 
     // Demo-only: preset the granularity via ?gran=day|week, for screenshots.
     if (DEMO && ['day', 'week'].includes(SEARCH.get('gran'))) setGran(SEARCH.get('gran'));
+
+    // ---- My Guardian (my-guardian) ----
+    // Needs a signed-in account (the admin key isn't a person). An admin sees
+    // every Guardian, owns every picture and can test-buy (no real payments yet).
+    const meState = { data: null, handle: localStorage.getItem('guardianMeHandle') || '' };
+    const ME_ROWS = [['boss_damage', 'Boss damage'], ['wins', 'Wins'], ['finds', 'Finds'], ['visits', 'Visits']];
+    function meNote(text, isError) {
+      $('meNote').textContent = text || '';
+      $('meNote').hidden = !text;
+      $('meNote').classList.toggle('err', !!isError);
+    }
+    async function meCall(opts) {
+      const r = await guardianAuth.call('my-guardian', opts);
+      if (!r.ok) throw new Error(r.out.error || 'HTTP ' + r.status);
+      return r.out;
+    }
+    async function loadMe() {
+      if (DEMO) return;
+      if (!guardianAuth.session()) {
+        $('meBody').hidden = true;
+        $('meWhichWrap').hidden = true;
+        $('meSignin').hidden = false;
+        meNote('Sign in to see your Guardians.', false);
+        guardianAuth.renderSignIn($('meSignin'), meNote);
+        return;
+      }
+      $('meSignin').hidden = true;
+      try {
+        meState.data = await meCall();
+        meNote('', false);
+        renderMe();
+      } catch (err) {
+        meNote("Couldn't load: " + err.message, true);
+      }
+    }
+    function renderMe() {
+      const d = meState.data;
+      const gs = d.guardians || [];
+      $('meShop').hidden = false;
+      $('meCreds').textContent = 'creds: ' + (d.creds || 0).toLocaleString();
+      const packs = $('mePacks');
+      packs.textContent = '';
+      for (const pk of d.packs || []) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'act-retry';
+        b.textContent = pk.name + ' · $' + (pk.price_cents / 100).toFixed(2) + (d.is_admin ? ' (test)' : '');
+        b.onclick = () => buyPack(pk);
+        packs.append(b);
+      }
+      $('meGrantWrap').hidden = !d.is_admin;
+      if (!gs.find(g => g.handle === meState.handle)) meState.handle = (gs.find(g => g.mine) || gs[0] || {}).handle || '';
+      const sel = $('meWhich');
+      sel.textContent = '';
+      for (const g of gs) {
+        const label = (g.public_name || g.handle) + (d.is_admin ? (g.mine ? ' (yours)' : ' · ' + (g.owner_email || 'no owner')) : '') + (g.status !== 'active' ? ' · ' + g.status : '');
+        sel.append(new Option(label, g.handle, false, g.handle === meState.handle));
+      }
+      $('meWhichWrap').hidden = gs.length < 2;
+      const g = gs.find(x => x.handle === meState.handle);
+      $('meBody').hidden = !g;
+      if (!g) { meNote(d.is_admin ? 'No registered Guardians yet.' : 'No Guardians on your account yet: register one on the join page.', false); return; }
+
+      const shown = g.art_choice || g.art;
+      const src = partnerSrc(shown);
+      $('meImg').hidden = !src;
+      if (src) $('meImg').src = src;
+      $('meName').textContent = g.public_name || g.handle;
+      const p = g.profile;
+      const bits = [];
+      if (p) bits.push('Lv ' + p.level, p.class, p.faction);
+      if (g.battle_rank) bits.push('Battle Rank #' + g.battle_rank.rank + ' (' + g.battle_rank.mmr + ' MMR, ' + g.battle_rank.duels + ' duels)');
+      else bits.push('Battle Rank: no rated duels this month');
+      bits.push('seen ' + (g.last_seen_day || 'never'));
+      if (g.art_choice && g.art_choice !== g.art) bits.push('new picture waits for its next check-in');
+      $('meSub').textContent = bits.filter(Boolean).join(' · ');
+
+      const tb = $('meScores');
+      tb.textContent = '';
+      for (const [m, label] of ME_ROWS) {
+        const tr = document.createElement('tr');
+        const cell = t => { const td = document.createElement('td'); td.textContent = t; tr.append(td); };
+        const fmt = v => v.value.toLocaleString() + (v.unverified ? ' (+' + v.unverified.toLocaleString() + ' unchecked)' : '');
+        cell(label);
+        cell(fmt(g.scores.day[m]));
+        cell(fmt(g.scores.week[m]));
+        cell(fmt(g.scores.all[m]));
+        cell(g.ranks[m] ? '#' + g.ranks[m] : '–');
+        tb.append(tr);
+      }
+
+      const ul = $('meNodes');
+      ul.textContent = '';
+      for (const n of g.nodes) {
+        const li = document.createElement('li');
+        li.textContent = n.name + (n.title ? ' · ' + n.title : '') + (n.is_super ? ' · Super' : '');
+        ul.append(li);
+      }
+      if (!g.nodes.length) { const li = document.createElement('li'); li.textContent = 'None right now.'; ul.append(li); }
+
+      $('meArtTitle').textContent = 'Picture' + (d.is_admin ? ' (admin: every picture, any Guardian)' : '');
+      const box = $('meArt');
+      box.textContent = '';
+      const canPick = g.status === 'active' && (g.mine || d.is_admin);
+      // Tap a picture to use it (usable: unlocked, free in the alpha, or admin);
+      // one not unlocked yet shows its cost in creds and an Unlock button.
+      for (const a of d.art || []) {
+        const cell = document.createElement('div');
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.setAttribute('aria-pressed', String(a.id === shown));
+        if (!a.usable) b.classList.add('lockd');
+        const img = document.createElement('img');
+        img.alt = '';
+        img.src = partnerSrc(a.id) || '';
+        b.append(img, document.createTextNode(a.name + (a.animated ? ' (animated)' : '')));
+        b.disabled = !canPick || !a.usable;
+        b.onclick = () => pickArt(g.handle, a);
+        cell.append(b);
+        if (!a.owned && a.item) {
+          const u = document.createElement('button');
+          u.type = 'button';
+          u.className = 'act-retry unl';
+          u.textContent = 'Unlock · ' + a.cost + ' creds';
+          u.onclick = () => unlockArt(a);
+          cell.append(u);
+        } else if (a.owned) {
+          const t = document.createElement('div');
+          t.style.cssText = 'text-align:center;font-size:10px;color:var(--muted);margin-top:4px';
+          t.textContent = 'unlocked';
+          cell.append(t);
+        }
+        box.append(cell);
+      }
+    }
+    async function pickArt(handle, a) {
+      try {
+        await meCall({ method: 'POST', body: { op: 'set_art', handle, art: a.id } });
+        meNote(a.name + ' picked: the Guardian switches the next time it gets its node list (Refresh on it).', false);
+        await loadMe();
+      } catch (err) {
+        meNote("Couldn't: " + err.message, true);
+      }
+    }
+    async function buyPack(pk) {
+      const test = meState.data.is_admin;
+      if (test && !confirm('Test purchase of ' + pk.name + ' (no charge)?')) return;
+      try {
+        const out = await meCall({ method: 'POST', body: { op: 'buy_pack', sku: pk.sku, idem: crypto.randomUUID() } });
+        meNote(pk.name + ' added: ' + out.creds.toLocaleString() + ' creds now.', false);
+        await loadMe();
+      } catch (err) {
+        meNote(err.message === "payments aren't open yet" ? "Payments aren't open yet." : "Couldn't: " + err.message, true);
+      }
+    }
+    async function unlockArt(a) {
+      if (!confirm('Unlock ' + a.name + ' for ' + a.cost + ' creds?')) return;
+      try {
+        const out = await meCall({ method: 'POST', body: { op: 'unlock', item: a.item, idem: crypto.randomUUID() } });
+        meNote(a.name + (out.result === 'owned' ? ' was already unlocked.' : ' unlocked: ' + out.creds.toLocaleString() + ' creds left.'), false);
+        await loadMe();
+      } catch (err) {
+        meNote(err.message === 'not enough creds' ? 'Not enough creds: buy a pack first.' : "Couldn't: " + err.message, true);
+      }
+    }
+    $('meGrant').onclick = async () => {
+      const n = Number($('meGrantN').value);
+      try {
+        const out = await meCall({ method: 'POST', body: { op: 'grant_creds', creds: n } });
+        meNote('Granted ' + n.toLocaleString() + ' creds: ' + out.creds.toLocaleString() + ' now.', false);
+        await loadMe();
+      } catch (err) {
+        meNote("Couldn't: " + err.message, true);
+      }
+    };
+    $('meWhich').onchange = e => {
+      meState.handle = e.target.value;
+      localStorage.setItem('guardianMeHandle', meState.handle);
+      renderMe();
+    };
+    $('meRefresh').onclick = () => loadMe();
 
     // ---- Members (admin-accounts) ----
     // The join link is shown once, when it's made (only its hash is kept).
@@ -1963,7 +2197,25 @@
         if (!(err instanceof LockedError)) memNote(err.message === 'sign in to change things' ? 'Sign in as an admin to make changes.' : "Couldn't: " + err.message, true);
       }
     }
+    // Who's signed in, or (with the key) a sign-in box: changes need a signed-in admin.
+    function renderMemSignin() {
+      const box = $('memSignin');
+      box.hidden = false;
+      box.classList.remove('err');
+      const email = guardianAuth.email();
+      if (email) {
+        const me = memState.accounts.find(a => a.email === email);
+        box.textContent = me && me.is_admin ? 'Signed in as ' + email + ' (admin).'
+          : 'Signed in as ' + email + ", which isn't an admin yet: set accounts.is_admin for it (SQL editor).";
+        return;
+      }
+      box.textContent = 'Read-only with the admin key. Sign in as an admin to make changes:';
+      const form = document.createElement('div');
+      box.append(form);
+      guardianAuth.renderSignIn(form, (text, isError) => memNote(text, isError));
+    }
     function renderMembers() {
+      renderMemSignin();
       const st = memState.settings;
       $('memSeats').textContent = st ? `seats: ${st.seats_used} of ${st.seat_cap}` : 'seats: …';
       $('memJoining').textContent = st ? (st.joining ? 'joining: open' : 'joining: closed') : '';
