@@ -16,8 +16,8 @@ window.guardianAuth = (() => {
 
   const SUPABASE_URL = 'https://fkeiqvlwujxjlxaducge.supabase.co';
   const PUBLISHABLE_KEY = 'sb_publishable_JBw_SlIMnqg6k96ZsdqabQ_n50CMqfZ';
-  // Add 'google', 'apple', 'discord' here as each is turned on.
-  const PROVIDERS = [];
+  // Each one on in the Supabase dashboard (2026-10-22: Google, Discord). Add 'apple' when it is.
+  const PROVIDERS = ['google', 'discord'];
   const LABELS = { google: 'Google', apple: 'Apple', discord: 'Discord' };
 
   const sb = window.supabase.createClient(SUPABASE_URL, PUBLISHABLE_KEY, {
