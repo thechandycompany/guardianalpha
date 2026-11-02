@@ -76,6 +76,15 @@
 
     <div class="step" id="done" hidden></div>
 
+    <!-- Joining is its own step, after signing in: open the invite link now, or paste it here. -->
+    <div class="step" id="invite" hidden>
+      <p>Signed in. Now your invite:</p>
+      <form id="inviteForm">
+        <input id="inviteLink" required placeholder="paste your invite link" autocomplete="off" spellcheck="false" aria-label="invite link">
+        <button class="act-retry" type="submit">Join</button>
+      </form>
+    </div>
+
     <!-- A member's Guardians: link one by the code it shows, or move one to new hardware. -->
     <div class="step" id="guardians" hidden>
       <div class="g-box" id="linkBox">
@@ -106,10 +115,22 @@
     // survives the trip out to the sign-in email and back.
     const $ = id => document.getElementById(id);
     const TOKEN_STORE = 'guardianJoinToken';
-    const hashToken = new URLSearchParams(location.hash.slice(1)).get('t');
-    if (hashToken) {
-      localStorage.setItem(TOKEN_STORE, hashToken);
-      history.replaceState(null, '', location.pathname + location.search);
+    // A Guardian's Register QR code: join.html#c=ABCDEFGH (its link code). Kept
+    // in this browser through sign-in (15 min, read once), then put in the Link
+    // box for one tap: never linked silently (anyone can make a QR code).
+    const CODE_STORE = 'guardianLinkCode';
+    const hashParams = new URLSearchParams(location.hash.slice(1));
+    const hashToken = hashParams.get('t');
+    const hashCode = (hashParams.get('c') || '').toUpperCase();
+    if (hashToken) localStorage.setItem(TOKEN_STORE, hashToken);
+    if (/^[2-9A-HJKMNP-Z]{4}-?[2-9A-HJKMNP-Z]{4}$/.test(hashCode))
+      localStorage.setItem(CODE_STORE, JSON.stringify({ code: hashCode, at: Date.now() }));
+    if (hashToken || hashParams.has('c')) history.replaceState(null, '', location.pathname + location.search);
+    function takeLinkCode() {
+      let v = null;
+      try { v = JSON.parse(localStorage.getItem(CODE_STORE)); } catch (_) {}
+      localStorage.removeItem(CODE_STORE);
+      return v && typeof v.code === 'string' && Date.now() - v.at < 15 * 60e3 ? v.code : '';
     }
 
     function note(text, isError) {
@@ -118,7 +139,7 @@
       $('note').classList.toggle('err', !!isError);
     }
     function show(step, text) {
-      for (const id of ['signin', 'age', 'done', 'guardians']) $(id).hidden = id !== step;
+      for (const id of ['signin', 'age', 'done', 'invite', 'guardians']) $(id).hidden = id !== step;
       if (step === 'done') $('done').textContent = text;
     }
     const el = (tag, cls, text) => {
@@ -252,10 +273,17 @@
         localStorage.removeItem(TOKEN_STORE);
         artList = out.art || [];
         renderGuardians(out.guardians || [], out.guardian_cap || 0);
-        return show('guardians');
+        show('guardians');
+        const pending = takeLinkCode();   // from a Guardian's QR code
+        if (pending) {
+          $('linkCode').value = tidyCode(pending);
+          $('linkForm').querySelector('button').focus();
+          note(`Tap Link to add the Guardian showing ${tidyCode(pending)}.`);
+        }
+        return;
       }
       const token = localStorage.getItem(TOKEN_STORE);
-      if (!token) return show('done', 'Open your invite link to join.');
+      if (!token) return show('invite');   // signed in; joining is the next, separate step
       const res = await guardianAuth.call('account', { method: 'POST', body: { op: 'join', token } });
       if (res.ok) { localStorage.removeItem(TOKEN_STORE); return refresh(); }
       const why = {
@@ -272,6 +300,17 @@
       e.preventDefault();
       const res = await guardianAuth.call('account', { method: 'POST', body: { op: 'age', birthdate: $('ageDate').value } });
       if (!res.ok) { note("That date didn't work: " + (res.out.error || 'try again'), true); return; }
+      note('');
+      refresh();
+    };
+    // A pasted invite: the whole link (…join.html#t=…) or just the token.
+    $('inviteForm').onsubmit = e => {
+      e.preventDefault();
+      const v = $('inviteLink').value.trim();
+      const t = (v.match(/[#&?]t=([A-Za-z0-9_-]{16,64})/) || [])[1] || (/^[A-Za-z0-9_-]{16,64}$/.test(v) ? v : '');
+      if (!t) { note("That doesn't look like an invite link.", true); return; }
+      localStorage.setItem(TOKEN_STORE, t);
+      $('inviteLink').value = '';
       note('');
       refresh();
     };

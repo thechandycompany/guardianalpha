@@ -3,9 +3,9 @@
 // (the jsDelivr <script> on each page). The publishable key is meant to be
 // public; never put the secret / service-role key here.
 //
-// Sign-in ways: an emailed link always; the buttons in PROVIDERS once each
-// is turned on in the Supabase dashboard (Authentication > Sign In /
-// Providers). Plan: .agents/tasks/online-boards-and-registration/plan.md.
+// Sign-in ways: the buttons in PROVIDERS (Google, Discord), each turned on in
+// the Supabase dashboard (Authentication > Sign In / Providers). No emailed
+// links since 2026-11-02. Plan: .agents/tasks/online-boards-and-registration/plan.md.
 window.guardianAuth = (() => {
   // Saved under the old project name (vpet*) before the guardian rename: move them over once.
   for (const k of ['AdminKey', 'Nicknames', 'DetailsOpen', 'JoinToken']) {
@@ -53,10 +53,6 @@ window.guardianAuth = (() => {
     session: () => session,
     email: () => session?.user?.email || '',
     onChange: f => listeners.push(f),
-    async emailLink(email) {
-      const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: here(), shouldCreateUser: true } });
-      if (error) throw error;
-    },
     async provider(name) {
       const { error } = await sb.auth.signInWithOAuth({ provider: name, options: { redirectTo: here() } });
       if (error) throw error;
@@ -75,26 +71,9 @@ window.guardianAuth = (() => {
     // The sign-in box: an email field and a button per provider, into `box`.
     // `note(text, isError)` reports what happened.
     renderSignIn(box, note) {
+      // Google or Discord only (2026-11-02): no emailed links (they broke
+      // when opened in another browser, and lost the invite on the way).
       box.textContent = '';
-      const form = document.createElement('form');
-      form.className = 'signin';
-      const input = Object.assign(document.createElement('input'), { type: 'email', required: true, placeholder: 'you@example.com', autocomplete: 'email' });
-      input.setAttribute('aria-label', 'email');
-      const send = Object.assign(document.createElement('button'), { type: 'submit', className: 'act-retry', textContent: 'Email me a link' });
-      form.append(input, send);
-      form.onsubmit = async e => {
-        e.preventDefault();
-        send.disabled = true;
-        try {
-          await this.emailLink(input.value.trim());
-          note('Check your email for the sign-in link (open it in this browser).', false);
-        } catch (err) {
-          note("Couldn't send it: " + (err.message || err), true);
-        } finally {
-          send.disabled = false;
-        }
-      };
-      box.append(form);
       if (PROVIDERS.length) {
         const row = document.createElement('div');
         row.className = 'signin-providers';
