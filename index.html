@@ -64,6 +64,7 @@
     .me-art .lockd img { opacity: 0.55; }
     .me-art .unl { display: block; margin: 4px auto 0; font-size: 10px; padding: 1px 6px; width: auto; }
     .me-pick input { background: var(--card); border: 1px solid var(--line2); border-radius: 4px; color: var(--text); padding: 3px 8px; width: 70px; }
+    .me-pick input.me-code { width: 110px; text-transform: uppercase; letter-spacing: 2px; }
     .mem-log { list-style: none; padding: 0; margin: 8px 0 0; font-size: 12px; color: var(--muted); }
 
     /* ---- The map: the whole grid, fitted to the width ---- */
@@ -458,6 +459,12 @@
         <span id="meGrantWrap" hidden><label>give me <input id="meGrantN" type="number" min="1" max="100000" value="500"></label>
           <button class="act-retry" id="meGrant">Grant creds</button></span>
       </div>
+      <!-- Link a Guardian by the code it shows (account "link", as on join.html). -->
+      <form class="me-pick" id="meLink" hidden>
+        <label>Link a Guardian <input id="meLinkCode" class="me-code" required placeholder="ABCD-EFGH" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>
+        <button class="act-retry" type="submit">Link</button>
+        <span class="info" tabindex="0" role="note" aria-label="On the Guardian: Settings > Register. The code lasts 15 minutes.">ⓘ<span class="info-text">On the Guardian: Settings &gt; Register. The code lasts 15 minutes.</span></span>
+      </form>
       <div class="act-note" id="meNote" hidden></div>
       <div id="meSignin" hidden></div>
       <div id="meBody" hidden>
@@ -2018,6 +2025,7 @@
       if (!guardianAuth.session()) {
         $('meBody').hidden = true;
         $('meWhichWrap').hidden = true;
+        $('meLink').hidden = true;
         $('meSignin').hidden = false;
         meNote('Sign in to see your Guardians.', false);
         guardianAuth.renderSignIn($('meSignin'), meNote);
@@ -2032,10 +2040,35 @@
         meNote("Couldn't load: " + err.message, true);
       }
     }
+    // Link a Guardian by its code (account "link"); the new one is picked once it's on.
+    const ME_LINK_ERRORS = {
+      'bad code': "That code didn't work. Codes last 15 minutes: get a new one on the Guardian (Settings > Register).",
+      'already registered': 'That Guardian is registered already.',
+      full: "You've linked as many Guardians as allowed. Deregister one on its device to free a slot.",
+      'not a member': 'Join the alpha first (open your invite link).',
+    };
+    $('meLinkCode').onblur = () => {
+      const c = $('meLinkCode').value.toUpperCase().replace(/[\s-]/g, '');
+      if (c.length === 8) $('meLinkCode').value = c.slice(0, 4) + '-' + c.slice(4);
+    };
+    $('meLink').onsubmit = async e => {
+      e.preventDefault();
+      const btn = $('meLink').querySelector('button');
+      btn.disabled = true;
+      const r = await guardianAuth.call('account', { method: 'POST', body: { op: 'link', code: $('meLinkCode').value } });
+      btn.disabled = false;
+      if (!r.ok) { meNote(ME_LINK_ERRORS[r.out.error] || "Couldn't link it: " + (r.out.error || 'try again'), true); return; }
+      $('meLinkCode').value = '';
+      meState.handle = r.out.guardian.handle;
+      localStorage.setItem('guardianMeHandle', meState.handle);
+      await loadMe();
+      meNote(`Linked ${r.out.guardian.public_name || 'your Guardian'}. It shows "REGISTERED!" when it next checks in.`, false);
+    };
     function renderMe() {
       const d = meState.data;
       const gs = d.guardians || [];
       $('meShop').hidden = false;
+      $('meLink').hidden = false;
       $('meCreds').textContent = 'creds: ' + (d.creds || 0).toLocaleString();
       const packs = $('mePacks');
       packs.textContent = '';
@@ -2058,7 +2091,7 @@
       $('meWhichWrap').hidden = gs.length < 2;
       const g = gs.find(x => x.handle === meState.handle);
       $('meBody').hidden = !g;
-      if (!g) { meNote(d.is_admin ? 'No registered Guardians yet.' : 'No Guardians on your account yet: register one on the join page.', false); return; }
+      if (!g) { meNote(d.is_admin ? 'No registered Guardians yet.' : 'No Guardians on your account yet: link one above.', false); return; }
 
       const shown = g.art_choice || g.art;
       const src = partnerSrc(shown);
