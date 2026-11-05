@@ -1,5 +1,9 @@
 [
  {
+  "id": "blackcat",
+  "name": "Blackcat"
+ },
+ {
   "id": "cat",
   "name": "Cat"
  },
@@ -12,8 +16,16 @@
   "name": "Gorilla"
  },
  {
+  "id": "kitsune",
+  "name": "Kitsune"
+ },
+ {
   "id": "monkey",
   "name": "Monkey"
+ },
+ {
+  "id": "panda",
+  "name": "Panda"
  },
  {
   "id": "penguin",
@@ -26,6 +38,10 @@
  {
   "id": "shark",
   "name": "Shark"
+ },
+ {
+  "id": "snowfox",
+  "name": "Snowfox"
  },
  {
   "id": "wolf",
