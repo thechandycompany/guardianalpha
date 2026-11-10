@@ -323,6 +323,10 @@
       width: max-content; max-width: 240px; padding: 6px 9px; border-radius: 6px; background: #0b1220; border: 1px solid #22304a;
       color: #cfd8e6; font-size: 11px; line-height: 1.4; text-align: left; white-space: normal; font-weight: normal; letter-spacing: 0; }
     .info:hover .info-text, .info:focus .info-text { display: block; }
+  .mem-edit { margin: 8px 0 14px; }
+    .mem-edit-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .mem-edit-row select, .mem-edit-row input { font: inherit; padding: 3px 6px; }
+    .mem-edit-row input { width: 110px; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="auth.js"></script>
@@ -440,6 +444,33 @@
         <thead><tr><th>Guardian</th><th>Owner</th><th>Status</th><th>Art</th><th>Since</th><th>Last seen</th><th></th></tr></thead>
         <tbody id="memGuardians"></tbody>
       </table>
+      <!-- Game data (2026-11-10, admin-accounts "g_edit"): a one-time push to a registered
+           Guardian's level / XP / items / gear / HP / stamina / Shards. It arrives with
+           the Guardian's next node list (Nodes, Look, Settings > Sync or a Roam wake). -->
+      <div class="mem-edit" id="memEdit" hidden>
+        <div class="act-note" id="memEditTitle">Game data</div>
+        <div class="mem-edit-row">
+          <select id="memEditOp">
+            <option value="level">Set level</option>
+            <option value="xp">Add XP</option>
+            <option value="item">Items (+/-)</option>
+            <option value="gear">Give gear</option>
+            <option value="hp">Set HP %</option>
+            <option value="stamina">Set stamina</option>
+            <option value="shards">Shards (+/-)</option>
+          </select>
+          <select id="memEditItem" hidden></select>
+          <select id="memEditGear" hidden></select>
+          <select id="memEditTier" hidden>
+            <option value="0">Common</option><option value="1">Uncommon</option>
+            <option value="2">Rare</option><option value="3">Epic</option>
+          </select>
+          <input id="memEditValue" type="number" placeholder="value">
+          <button class="act-retry" id="memEditSend">Queue</button>
+          <button class="act-retry" id="memEditClose">Close</button>
+        </div>
+        <ul class="mem-log" id="memEditList"></ul>
+      </div>
       <div class="act-note">Admin log</div>
       <ul class="mem-log" id="memLog"></ul>
     </div><!-- /panel-members -->
@@ -2305,6 +2336,9 @@
           if (g.status === 'locked') btn('Revoke', 'g_revoke', `Revoke ${name}?`);
         }
         btn(g.hidden ? 'Unhide' : 'Hide', g.hidden ? 'g_unhide' : 'g_hide');
+        const ge = el('button', 'act-retry', 'Game data');
+        ge.onclick = () => openMemEdit(g);
+        acts.append(ge);
         const status = g.status + (g.hidden ? ' · hidden' : '') + (g.source && g.source !== 'alpha' ? ' · ' + g.source : '');
         const tr = el('tr');
         tr.title = 'handle ' + g.handle;
@@ -2314,6 +2348,68 @@
       }
       if (!(memState.guardians || []).length) body.append(Object.assign(el('tr'), { innerHTML: '<td colspan="7">No Guardians registered yet.</td>' }));
     }
+    // Game data pushes (admin-accounts g_edit / g_edit_cancel; guardian_edits).
+    const EDIT_ITEMS = { 1: 'HP Berry', 2: 'STA Potion', 3: 'Honey Berry', 4: 'Vigor Tonic', 5: 'Star Fragment', 6: 'Guardian Relic' };
+    const EDIT_GEAR = ['Cinder Visor', 'Bastion Helm', 'Zephyr Goggles', 'Clover Circlet', 'Rune Crown', 'Ember Mail', 'Aegis Plate',
+      'Windrunner Vest', 'Fortune Cloak', 'Glyph Robe', 'Ember Core', 'Bastion Seal', 'Gale Feather', 'Four-Leaf Charm', 'Rune Stone'];
+    const EDIT_TIERS = ['Common', 'Uncommon', 'Rare', 'Epic'];
+    let memEditFor = null;
+    $('memEditItem').replaceChildren(...Object.entries(EDIT_ITEMS).map(([id, n]) => Object.assign(el('option', null, n), { value: id })));
+    $('memEditGear').replaceChildren(...EDIT_GEAR.map((n, i) => Object.assign(el('option', null, n), { value: i + 1 })));
+    function editText(e) {
+      switch (e.op) {
+        case 'level': return 'level ' + e.value;
+        case 'xp': return '+' + e.value + ' XP';
+        case 'item': return (e.count > 0 ? '+' : '') + e.count + ' ' + (EDIT_ITEMS[e.id] || 'item ' + e.id);
+        case 'gear': return (EDIT_GEAR[e.id - 1] || 'gear ' + e.id) + ' (' + (EDIT_TIERS[e.tier] || e.tier) + ' Lv' + (e.level || 1) + ')';
+        case 'hp': return 'HP ' + e.value + '%';
+        case 'stamina': return 'stamina ' + e.value;
+        case 'shards': return (e.value > 0 ? '+' : '') + e.value + ' Shards';
+      }
+      return JSON.stringify(e);
+    }
+    function memEditFields() {
+      const op = $('memEditOp').value;
+      $('memEditItem').hidden = op !== 'item';
+      $('memEditGear').hidden = $('memEditTier').hidden = op !== 'gear';
+      $('memEditValue').placeholder = op === 'item' ? 'count (+/-)' : op === 'gear' ? 'level' : op === 'hp' ? '0-100' : 'value';
+    }
+    function renderMemEdit() {
+      if (!memEditFor) return;
+      const mine = (memState.edits || []).filter(x => x.handle === memEditFor.handle);
+      $('memEditList').replaceChildren(...mine.map(x => {
+        const li = el('li', null, `#${x.id} · ${editText(x.edit)} · ` + (x.done_at ? 'applied ' + new Date(x.done_at).toLocaleString()
+          : x.sent_at ? 'sent ' + new Date(x.sent_at).toLocaleString() + ', waiting for the Guardian' : 'waiting for the Guardian to go online'));
+        if (!x.done_at) {
+          const c = el('button', 'act-retry', 'Cancel');
+          c.onclick = () => memDo({ op: 'g_edit_cancel', id: x.id });
+          li.append(' ', c);
+        }
+        return li;
+      }));
+      if (!mine.length) $('memEditList').replaceChildren(el('li', null, 'No pushes for this Guardian yet.'));
+    }
+    function openMemEdit(g) {
+      memEditFor = g;
+      $('memEdit').hidden = false;
+      $('memEditTitle').textContent = 'Game data: ' + (g.public_name || g.handle) + ' (arrives with its next node list: Nodes, Look or Settings > Sync)';
+      memEditFields();
+      renderMemEdit();
+      $('memEdit').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    $('memEditOp').onchange = memEditFields;
+    $('memEditClose').onclick = () => { memEditFor = null; $('memEdit').hidden = true; };
+    $('memEditSend').onclick = () => {
+      if (!memEditFor) return;
+      const op = $('memEditOp').value, v = parseInt($('memEditValue').value, 10);
+      const edit = { op };
+      if (op === 'item') { edit.id = parseInt($('memEditItem').value, 10); edit.count = v; }
+      else if (op === 'gear') { edit.id = parseInt($('memEditGear').value, 10); edit.tier = parseInt($('memEditTier').value, 10); edit.level = Number.isInteger(v) ? v : 1; }
+      else edit.value = v;
+      if (op !== 'gear' && !Number.isInteger(v)) { memNote('Enter a number.', true); return; }
+      if (!confirm(`Push "${editText(edit)}" to ${memEditFor.public_name || memEditFor.handle}?`)) return;
+      memDo({ op: 'g_edit', handle: memEditFor.handle, edit }, () => { memNote('Queued: ' + editText(edit)); $('memEditValue').value = ''; });
+    };
     async function loadMembers() {
       if (DEMO || !canTry()) return;
       try {
@@ -2323,8 +2419,10 @@
         memState.virus = out.virus || null;
         memState.actions = out.actions || [];
         memState.guardians = out.guardians || [];
+        memState.edits = out.edits || [];
         renderMembers();
         renderMemGuardians();
+        renderMemEdit();
       } catch (err) {
         if (!(err instanceof LockedError)) memNote("Couldn't load members: " + err.message, true);
       }
